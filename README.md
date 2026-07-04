@@ -1,3 +1,18 @@
+# Horizon Travel AI
+Autonomous, multi-agent travel intelligence system.
+
+## Setup
+1. `pip install -r requirements.txt`
+2. `cp .env.example .env` (Add your API key)
+3. `streamlit run app.py`
+
+## Architecture
+- **Root Orchestrator**: Manages agent transitions.
+- **Specialist Agents**: Concierge, Extractor, Architect, and DNA Learner.
+- **Travel State**: Pydantic-based state machine for cross-agent data sharing.
+
+
+
 horizon-travel-ai/
 ├── .env.example            # Template for OPENROUTER_API_KEY, etc.
 ├── README.md               # Overview of PRD v2.0 and setup instructions
