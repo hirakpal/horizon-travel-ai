@@ -10,13 +10,14 @@ st.markdown("""
 <style>
     .main-header { font-family: 'Playfair Display', serif; color: #FF6B6B; text-align: center; }
     .destination-card { 
-        background: white; border-radius: 20px; padding: 0; 
-        box-shadow: 0 8px 25px rgba(0,0,0,0.15); overflow: hidden;
-        transition: all 0.4s ease;
+        background: #1e2937; border-radius: 16px; padding: 0; 
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3); overflow: hidden;
+        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
     }
-    .destination-card:hover { transform: translateY(-8px); box-shadow: 0 15px 35px rgba(255,107,107,0.25); }
-    .card-image { height: 220px; object-fit: cover; width: 100%; }
-    .card-content { padding: 18px; }
+    .destination-card:hover { transform: translateY(-12px); box-shadow: 0 20px 40px rgba(255,107,107,0.3); }
+    .card-image { height: 240px; object-fit: cover; width: 100%; }
+    .card-content { padding: 20px; }
+    .match-bar { height: 6px; background: linear-gradient(90deg, #FF6B6B, #FFB800); border-radius: 10px; margin: 8px 0; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -81,16 +82,16 @@ elif page == "Explore":
     st.caption("Curated based on your Travel DNA preferences")
     
     destinations = [
-        ("Kyoto, Japan", "Immerse in ancient temples, stroll through cherry blossom gardens, and experience traditional tea ceremonies in this cultural heart of Japan.", "97%", "https://picsum.photos/id/1015/600/280"),
-        ("Bali, Indonesia", "Relax on pristine beaches, explore lush rice terraces, and find inner peace in spiritual yoga retreats and vibrant Hindu temples.", "92%", "https://picsum.photos/id/1016/600/280"),
-        ("Paris, France", "Stroll along the Seine, admire world-class art in the Louvre, and indulge in exquisite French cuisine and romantic café culture.", "88%", "https://picsum.photos/id/1018/600/280"),
-        ("Santorini, Greece", "Marvel at dramatic cliffside views, watch magical sunsets over the Aegean Sea, and explore white-washed villages.", "91%", "https://picsum.photos/id/102/600/280"),
-        ("Swiss Alps, Switzerland", "Ride scenic trains through majestic mountains, hike pristine trails, and enjoy chocolate and cheese in charming villages.", "85%", "https://picsum.photos/id/103/600/280"),
-        ("Marrakech, Morocco", "Wander bustling souks, experience vibrant markets, and discover riad hotels and desert adventures.", "79%", "https://picsum.photos/id/104/600/280"),
-        ("Banff, Canada", "Discover turquoise lakes, towering peaks, and abundant wildlife in one of the world's most beautiful national parks.", "82%", "https://picsum.photos/id/105/600/280"),
-        ("Barcelona, Spain", "Admire Gaudí’s architectural masterpieces, enjoy tapas and beach life, and soak in Mediterranean energy.", "87%", "https://picsum.photos/id/106/600/280"),
-        ("Queenstown, New Zealand", "Experience adrenaline-pumping adventures like bungee jumping, jet boating, and hiking in stunning fjord landscapes.", "76%", "https://picsum.photos/id/107/600/280"),
-        ("Dubai, UAE", "Explore futuristic architecture, luxury shopping, desert safaris, and world-class entertainment in this modern oasis.", "81%", "https://picsum.photos/id/108/600/280")
+        ("Kyoto, Japan", "Immerse yourself in timeless temples, serene gardens, and the magical cherry blossom season in Japan's cultural capital.", "97%", "https://picsum.photos/id/1015/600/280"),
+        ("Bali, Indonesia", "Discover golden beaches, lush rice terraces, spiritual yoga retreats, and vibrant Hindu culture.", "92%", "https://picsum.photos/id/1016/600/280"),
+        ("Paris, France", "Stroll along the Seine, visit iconic museums, enjoy world-class cuisine and romantic Parisian charm.", "88%", "https://picsum.photos/id/1018/600/280"),
+        ("Santorini, Greece", "Experience breathtaking cliffside views, dramatic sunsets, and charming white-washed villages.", "91%", "https://picsum.photos/id/102/600/280"),
+        ("Swiss Alps, Switzerland", "Journey through majestic mountains, crystal-clear lakes, and charming alpine villages by scenic train.", "85%", "https://picsum.photos/id/103/600/280"),
+        ("Marrakech, Morocco", "Wander bustling souks, experience vibrant colors, spices, and traditional riad hospitality.", "79%", "https://picsum.photos/id/104/600/280"),
+        ("Banff, Canada", "Explore turquoise glacial lakes, towering peaks, and abundant wildlife in this iconic national park.", "82%", "https://picsum.photos/id/105/600/280"),
+        ("Barcelona, Spain", "Admire Gaudí’s architectural wonders, relax on Mediterranean beaches, and savor tapas culture.", "87%", "https://picsum.photos/id/106/600/280"),
+        ("Queenstown, New Zealand", "Dive into adventure with bungee jumping, jet boating, and hiking in stunning fjord landscapes.", "76%", "https://picsum.photos/id/107/600/280"),
+        ("Dubai, UAE", "Marvel at futuristic skyscrapers, enjoy luxury shopping, desert safaris, and world-class entertainment.", "81%", "https://picsum.photos/id/108/600/280")
     ]
     
     cols = st.columns(2)
@@ -109,6 +110,6 @@ elif page == "Explore":
             
             if st.button(f"🌟 Plan Trip to {name.split(',')[0]}", key=f"plan_{i}"):
                 st.session_state.current_destination = name
-                st.success(f"Creating full personalized itinerary for **{name}**...")
+                st.success(f"Generating your personalized itinerary for **{name}**...")
 
 st.caption("Horizon Travel AI • Capstone Demo")
