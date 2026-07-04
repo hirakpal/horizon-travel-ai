@@ -67,7 +67,7 @@ def test_ready_to_plan_budget_alert():
     state.preferences.days = 10
     state.preferences.budget = 1000
     state.preferences.arrival_time = "morning"
-    state.preferences.transport_suggestions = {"raw": "x"}
+    state.preferences.transport_suggestions = "x"
     state.preferences.hotel_type = "luxury"
     state.preferences.food_preferences = ["vegetarian"]
 
@@ -85,7 +85,7 @@ def test_affirmative_confirmation_triggers_itinerary_build():
     state.preferences.days = 2
     state.preferences.budget = 100000
     state.preferences.arrival_time = "morning"
-    state.preferences.transport_suggestions = {"raw": "x"}
+    state.preferences.transport_suggestions = "x"
     state.preferences.hotel_type = "mid_range"
     state.preferences.food_preferences = ["vegetarian"]
 
@@ -112,7 +112,7 @@ def test_architect_failure_keeps_user_at_ready_to_plan():
     state.preferences.days = 2
     state.preferences.budget = 100000
     state.preferences.arrival_time = "morning"
-    state.preferences.transport_suggestions = {"raw": "x"}
+    state.preferences.transport_suggestions = "x"
     state.preferences.hotel_type = "mid_range"
     state.preferences.food_preferences = ["vegetarian"]
 

@@ -215,7 +215,7 @@ class RootOrchestrator:
                 f"- {mode.title()}: {info['price']}, {info['duration']} ({info['availability']})"
                 for mode, info in mock.items())
 
-        state.preferences.transport_suggestions = {"raw": suggestions_text}
+        state.preferences.transport_suggestions = suggestions_text
 
         return (f"Based on your **{state.preferences.arrival_time.replace('_', ' ')}** arrival "
                 f"preference, here's what I found for {state.preferences.origin} → "
