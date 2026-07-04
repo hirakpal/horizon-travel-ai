@@ -2,6 +2,7 @@
 
 import json
 from src.models.state import TravelState
+from src.models.preferences import TravelPreferences
 # Add these imports
 from src.agents.concierge import ConciergeAgent
 from src.agents.extractor import PreferenceExtractionAgent
