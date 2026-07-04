@@ -10,7 +10,37 @@ st.markdown("""
 <style>
     .main-header { font-family: 'Playfair Display', serif; color: #FF6B6B; text-align: center; }
     .hero { border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
-    .nav-button { background: linear-gradient(90deg, #FF6B6B, #FFB800); color: white; border: none; padding: 14px 24px; border-radius: 50px; font-weight: bold; margin: 8px; }
+    
+    /* Custom Navigation */
+    .nav-button {
+        background: linear-gradient(90deg, #FF6B6B, #FFB800);
+        color: white;
+        border: none;
+        padding: 12px 20px;
+        border-radius: 50px;
+        font-weight: bold;
+        margin: 6px 0;
+        width: 100%;
+        text-align: left;
+        transition: all 0.3s ease;
+    }
+    .nav-button:hover {
+        transform: translateX(8px);
+        box-shadow: 0 4px 15px rgba(255,107,107,0.4);
+    }
+    .nav-button.active {
+        background: linear-gradient(90deg, #FF4757, #FFA502);
+        box-shadow: 0 0 0 3px rgba(255,107,107,0.3);
+    }
+    
+    .destination-card { 
+        background: #1e2937; border-radius: 20px; padding: 0; 
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3); overflow: hidden;
+        transition: all 0.4s ease;
+    }
+    .destination-card:hover { transform: translateY(-10px); box-shadow: 0 20px 40px rgba(255,107,107,0.3); }
+    .card-image { height: 240px; object-fit: cover; width: 100%; }
+    .card-content { padding: 20px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -27,16 +57,12 @@ with st.sidebar:
     st.title("Horizon")
     st.caption("Your Intelligent Travel Companion")
     
-    if st.button("🏠 Home", use_container_width=True):
-        set_page("Home")
-    if st.button("💬 Chat", use_container_width=True):
-        set_page("Chat")
-    if st.button("🗺️ Itinerary", use_container_width=True):
-        set_page("Itinerary")
-    if st.button("🧬 Travel DNA", use_container_width=True):
-        set_page("Travel DNA")
-    if st.button("✨ Explore", use_container_width=True):
-        set_page("Explore")
+    pages = ["Home", "Chat", "Itinerary", "Travel DNA", "Explore"]
+    icons = ["🏠", "💬", "🗺️", "🧬", "✨"]
+    
+    for p, icon in zip(pages, icons):
+        if st.button(f"{icon} {p}", key=p, use_container_width=True):
+            set_page(p)
 
 page = st.session_state.current_page
 
