@@ -774,13 +774,31 @@ elif page == "Itinerary":
     else:
         it = ts.itinerary_data
         days = it.get("itinerary", [])
-        total_spend = sum((seg.get("cost") or 0) for day in days for seg in day.get("segments", []))
+        activities_total = sum((seg.get("cost") or 0) for day in days for seg in day.get("segments", []))
+
+        # Hotel + transport aren't part of the LLM-authored day-by-day segments, so they're
+        # estimated deterministically here rather than depending on the model to account for
+        # them — otherwise "Total Estimated Spend" silently excludes two of the biggest
+        # trip costs and looks far cheaper than the trip will actually be.
+        orchestrator = st.session_state.get("orchestrator")
+        hotel_transport_estimate = (
+            orchestrator.estimate_trip_cost(ts.preferences.destination, ts.preferences.days,
+                                             ts.preferences.hotel_type)
+            if orchestrator else 0)
+        grand_total = activities_total + hotel_transport_estimate
+        budget = ts.preferences.budget
 
         # Summary Header
         st.markdown("### Plan Overview")
-        budget = ts.preferences.budget
-        st.write(f"Total Budget: ₹{budget:,}" if budget else "Total Budget: N/A")
-        st.write(f"Total Estimated Spend: ₹{total_spend:,}")
+        hotel_label = ts.preferences.hotel_type.replace('_', ' ').title() if ts.preferences.hotel_type else "N/A"
+        st.write(f"Hotel tier: **{hotel_label}**")
+        st.write(f"Activities & food: ₹{activities_total:,}")
+        st.write(f"Estimated hotel & transport (approx., {ts.preferences.days or '?'} days): "
+                 f"₹{hotel_transport_estimate:,}")
+        st.write(f"**Estimated grand total: ₹{grand_total:,}**")
+        st.write(f"Your budget: ₹{budget:,}" if budget else "Your budget: N/A")
+        if budget and grand_total > budget:
+            st.warning(f"⚠️ This plan is approximately ₹{grand_total - budget:,} over your stated budget.")
         rule()
 
         # Render Day Cards
