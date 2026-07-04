@@ -789,6 +789,13 @@ elif page == "Chat":
 
     orchestrator = st.session_state.orchestrator
 
+    # --- "Not sure yet" budget shortcut ---
+    if current_stage == "basic_info" and orchestrator.is_only_missing_budget(state):
+        if st.button("🤷 Not sure yet — estimate my budget for me", width="stretch"):
+            orchestrator.mark_budget_flexible(state)
+            st.rerun()
+        st.caption("Or just tell me a number in the chat below.")
+
     # --- Interactive transport option cards ---
     if current_stage == "transport" and state.preferences.arrival_time and state.transport_options:
         st.markdown("#### ✈️ Choose your transport")

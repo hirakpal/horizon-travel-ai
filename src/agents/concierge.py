@@ -18,8 +18,11 @@ class ConciergeAgent(BaseAgent):
     def run(self, state: TravelState, input_text: str) -> dict:
         # Use model_dump() for Pydantic V2
         prefs = state.preferences.model_dump()
-        # Identify missing basic fields only
-        missing = [k for k in self.BASIC_FIELDS if not prefs.get(k)]
+        # Identify missing basic fields only. A traveler who explicitly said they
+        # don't have a fixed budget isn't "missing" it — one gets estimated later
+        # from their transport/hotel choices.
+        missing = [k for k in self.BASIC_FIELDS
+                   if not prefs.get(k) and not (k == "budget" and prefs.get("budget_flexible"))]
 
         messages = self._get_messages(state, input_text)
 

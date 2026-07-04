@@ -451,3 +451,59 @@ def test_scenario_user_corrects_a_detail_mid_flow():
     response = orchestrator.process_turn(state, "actually make it a luxury hotel, and bump budget to 80000")
     assert state.preferences.hotel_type == "luxury"
     assert "food" in response.lower()
+
+
+# ============================================================================
+# Scenario 13 — real-world regression: user doesn't know their budget and asks
+# to have it estimated. Previously this got stuck re-asking for a number
+# forever (screenshot: "help me estimate the budget" -> re-asked anyway).
+# ============================================================================
+def test_scenario_budget_uncertainty_gets_estimated_after_hotel_choice():
+    orchestrator, state = new_session()
+
+    with patch.object(orchestrator.extractor, "run",
+                       return_value=extraction(destination="Tokyo, Japan", days=5)):
+        r1 = orchestrator.process_turn(state, "Tokiyo Japan, 5 days trip, i dont know the budget")
+    assert state.preferences.budget_flexible is True
+    assert state.preferences.budget is None
+    assert "origin" in r1.lower()  # must not re-ask for budget
+
+    with patch.object(orchestrator.extractor, "run",
+                       return_value=extraction(origin="Bangalore", month="July 2026")):
+        r2 = orchestrator.process_turn(state, "Bangalore, help me estimate the budget, planning to travel in July 2026")
+    # All basic fields now satisfied (budget waived) -> chains straight to arrival time
+    assert state.preferences.planning_stage == "transport"
+    assert "when do you plan to reach" in r2.lower()
+
+    with patch.object(orchestrator.transport, "run",
+                       return_value={"options": [transport_option(price=90000, duration="9h")]}):
+        orchestrator.process_turn(state, "early morning")
+        r3 = orchestrator.process_turn(state, "flight")
+    assert state.preferences.transport_cost == 90000
+    assert "hotel" in r3.lower()
+    assert state.preferences.budget is None  # still no number — hotel not chosen yet
+
+    r4 = orchestrator.process_turn(state, "mid-range hotel")
+    # Both transport and hotel now known -> a real budget gets computed and set
+    assert state.preferences.budget is not None
+    expected_total = 90000 + 5000 * 5 + 800 * 5
+    assert state.preferences.budget == expected_total
+    assert f"₹{expected_total:,}" in r4
+    assert "food" in r4.lower()
+
+    r5 = orchestrator.process_turn(state, "no restrictions")
+    assert f"{state.preferences.budget} INR" in r5
+    assert "shall i go ahead" in r5.lower()
+
+
+def test_not_sure_yet_button_unblocks_basic_info_without_typing_a_number():
+    orchestrator, state = new_session()
+    state.preferences.destination = "Tokyo"
+    state.preferences.origin = "Bangalore"
+    state.preferences.days = 5
+
+    response = orchestrator.mark_budget_flexible(state)
+
+    assert state.preferences.budget_flexible is True
+    assert state.preferences.planning_stage == "transport"
+    assert "when do you plan to reach" in response.lower()

@@ -4,6 +4,8 @@ from typing import Optional, List
 class TravelPreferences(BaseModel):
     # Basic trip details
     budget: Optional[int] = Field(None, description="Total budget in INR")
+    budget_flexible: Optional[bool] = Field(
+        None, description="True if the user has no fixed budget and wants one estimated from their choices")
     days: Optional[int] = Field(None, description="Number of days for the trip")
     month: Optional[str] = Field(None, description="Month of travel")
     origin: Optional[str] = Field(None, description="Starting city")

@@ -45,6 +45,14 @@ REPLAN_PATTERNS = (
     "begin again", "plan a new trip", "start again",
 )
 
+BUDGET_UNCERTAIN_PATTERNS = (
+    "don't know the budget", "dont know the budget", "don't know my budget", "dont know my budget",
+    "not sure about the budget", "not sure what the budget", "not sure of my budget",
+    "no budget in mind", "no fixed budget", "flexible budget", "whatever it costs",
+    "help me estimate", "estimate the budget", "estimate my budget", "suggest a budget",
+    "don't have a budget", "dont have a budget", "no idea about the budget", "no idea on budget",
+)
+
 HOTEL_NIGHTLY_RATES = {"budget": 2500, "mid_range": 5000, "luxury": 9000, "boutique": 7000}
 DEFAULT_NIGHTLY_RATE = 4000
 DAILY_ACTIVITIES_BUFFER = 800
@@ -74,6 +82,11 @@ def _is_affirmative(text: str) -> bool:
                for p in AFFIRMATIVE_PATTERNS)
 
 
+def _is_budget_uncertain(text: str) -> bool:
+    lowered = text.lower()
+    return any(p in lowered for p in BUDGET_UNCERTAIN_PATTERNS)
+
+
 class RootOrchestrator:
     def __init__(self):
         self.concierge = ConciergeAgent()
@@ -86,7 +99,18 @@ class RootOrchestrator:
     # Helpers
     # ------------------------------------------------------------------
     def _missing_basic_fields(self, prefs: TravelPreferences) -> list:
-        return [f for f in BASIC_FIELDS if not getattr(prefs, f)]
+        missing = []
+        for f in BASIC_FIELDS:
+            if f == "budget" and prefs.budget_flexible:
+                continue  # user explicitly doesn't have a number yet — we'll estimate one later
+            if not getattr(prefs, f):
+                missing.append(f)
+        return missing
+
+    def is_only_missing_budget(self, state: TravelState) -> bool:
+        """Used by the UI to offer a 'not sure yet' button instead of forcing a
+        typed number, once every other basic field is already known."""
+        return self._missing_basic_fields(state.preferences) == ["budget"]
 
     def _current_stage(self, p: TravelPreferences, has_itinerary: bool) -> str:
         if self._missing_basic_fields(p):
@@ -208,7 +232,45 @@ class RootOrchestrator:
     # ------------------------------------------------------------------
     # Stage handlers
     # ------------------------------------------------------------------
+    def mark_budget_flexible(self, state: TravelState) -> str:
+        """Called by the UI when the user clicks 'not sure yet' instead of typing
+        a budget figure. Also reachable via typed phrases like "I don't know the
+        budget" (see _is_budget_uncertain), handled inline in _handle_basic_info."""
+        state.preferences.budget_flexible = True
+        state.messages.append({"role": "user", "content": "[No fixed budget — please estimate it for me]"})
+
+        missing = self._missing_basic_fields(state.preferences)
+        if not missing:
+            response = "No problem! " + self._arrival_time_prompt(state)
+        else:
+            response = ("No problem, I'll estimate a budget once I know your transport and hotel "
+                        "choices. Could you tell me your " + ", ".join(missing) + "?")
+        state.preferences.planning_stage = self._current_stage(state.preferences, bool(state.itinerary_data))
+        state.messages.append({"role": "assistant", "content": response})
+        return response
+
+    def _maybe_estimate_budget(self, state: TravelState) -> str:
+        """Once both a transport option and a hotel tier are chosen, a traveler
+        who didn't have a fixed budget gets one computed from their actual
+        selections — never left guessing, and never blocked on a number they
+        said upfront they didn't have."""
+        p = state.preferences
+        if not (p.budget_flexible and p.budget is None
+                and p.transport_cost is not None and p.hotel_cost_per_night is not None):
+            return ""
+        estimate = self.budget_breakdown(state)["grand_total"]
+        p.budget = estimate
+        return (f"Since you didn't have a fixed budget, here's an estimate based on your choices — "
+                f"transport ₹{p.transport_cost:,}, hotel ₹{p.hotel_cost_per_night:,}/night for "
+                f"{p.days} nights, plus a rough allowance for food & activities: "
+                f"**≈₹{estimate:,} total**. I've set that as your working budget — just let me know "
+                f"if you'd like to adjust it.\n\n")
+
     def _handle_basic_info(self, state: TravelState, user_input: str) -> str:
+        if not state.preferences.budget and not state.preferences.budget_flexible \
+                and _is_budget_uncertain(user_input):
+            state.preferences.budget_flexible = True
+
         try:
             concierge_result = self.concierge.run(state, user_input)
             if isinstance(concierge_result, dict):
@@ -328,7 +390,8 @@ class RootOrchestrator:
         if matched:
             state.preferences.hotel_type = matched
             state.preferences.hotel_cost_per_night = HOTEL_NIGHTLY_RATES.get(matched, DEFAULT_NIGHTLY_RATE)
-            return self._handle_food_preferences(state, user_input, prompt_only=True)
+            budget_note = self._maybe_estimate_budget(state)
+            return budget_note + self._handle_food_preferences(state, user_input, prompt_only=True)
 
         return self._hotel_type_prompt()
 
@@ -339,7 +402,8 @@ class RootOrchestrator:
 
         label = tier.replace('_', ' ').title()
         state.messages.append({"role": "user", "content": f"[Selected hotel tier: {label}]"})
-        response = self._food_preferences_prompt()
+        budget_note = self._maybe_estimate_budget(state)
+        response = budget_note + self._food_preferences_prompt()
         state.preferences.planning_stage = self._current_stage(state.preferences, bool(state.itinerary_data))
         state.messages.append({"role": "assistant", "content": response})
         return response
