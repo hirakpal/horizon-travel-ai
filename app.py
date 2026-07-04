@@ -18,7 +18,9 @@ from datetime import datetime
 import plotly.graph_objects as go
 import streamlit as st
 from fpdf import FPDF
-
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # ============================================================================
 # Design tokens — slate night + sunset (coral → amber)
 # ============================================================================
