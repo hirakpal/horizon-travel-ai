@@ -83,6 +83,88 @@ def test_compute_walking_route_returns_none_when_no_routes_found():
     assert route is None
 
 
+def test_text_search_places_applies_location_bias_when_given():
+    fake_api_response = {"places": []}
+    with patch.object(google_maps.requests, "post", return_value=_mock_response(fake_api_response)) as mock_post:
+        google_maps.text_search_places("attractions", api_key="test-key",
+                                        location_bias={"lat": 25.6, "lng": 85.1})
+
+    body = mock_post.call_args.kwargs["json"]
+    assert body["locationBias"]["circle"]["center"] == {"latitude": 25.6, "longitude": 85.1}
+    assert body["locationBias"]["circle"]["radius"] == google_maps.DEFAULT_BIAS_RADIUS_METERS
+
+
+def test_text_search_places_omits_location_bias_when_not_given():
+    with patch.object(google_maps.requests, "post", return_value=_mock_response({"places": []})) as mock_post:
+        google_maps.text_search_places("attractions", api_key="test-key")
+
+    assert "locationBias" not in mock_post.call_args.kwargs["json"]
+
+
+def test_autocomplete_place_id_returns_top_suggestion():
+    fake_api_response = {"suggestions": [
+        {"placePrediction": {"placeId": "ChIJ_patna123", "text": {"text": "Patna, Bihar, India"}}},
+        {"placePrediction": {"placeId": "ChIJ_other456", "text": {"text": "Patna, Somewhere Else"}}},
+    ]}
+    with patch.object(google_maps.requests, "post", return_value=_mock_response(fake_api_response)):
+        place_id = google_maps.autocomplete_place_id("Patna", api_key="test-key")
+
+    assert place_id == "ChIJ_patna123"
+
+
+def test_autocomplete_place_id_returns_none_when_no_suggestions():
+    with patch.object(google_maps.requests, "post", return_value=_mock_response({"suggestions": []})):
+        assert google_maps.autocomplete_place_id("asdkjaskdjaskd", api_key="test-key") is None
+
+
+def test_get_place_location_parses_lat_lng():
+    fake_api_response = {"location": {"latitude": 25.5941, "longitude": 85.1376}}
+    with patch.object(google_maps.requests, "get", return_value=_mock_response(fake_api_response)) as mock_get:
+        location = google_maps.get_place_location("ChIJ_patna123", api_key="test-key")
+
+    assert location == {"lat": 25.5941, "lng": 85.1376}
+    assert mock_get.call_args.kwargs["headers"]["X-Goog-Api-Key"] == "test-key"
+
+
+def test_get_place_location_returns_none_when_missing():
+    with patch.object(google_maps.requests, "get", return_value=_mock_response({})):
+        assert google_maps.get_place_location("ChIJ_x", api_key="test-key") is None
+
+
+def test_resolve_place_id_uses_autocomplete_then_place_details():
+    autocomplete_response = _mock_response({
+        "suggestions": [{"placePrediction": {"placeId": "ChIJ_patna123", "text": {"text": "Patna"}}}]
+    })
+    details_response = _mock_response({"location": {"latitude": 25.5941, "longitude": 85.1376}})
+
+    with patch.object(google_maps.requests, "post", return_value=autocomplete_response), \
+         patch.object(google_maps.requests, "get", return_value=details_response):
+        result = google_maps.resolve_place_id("Patna", api_key="test-key")
+
+    assert result == {"place_id": "ChIJ_patna123", "lat": 25.5941, "lng": 85.1376}
+
+
+def test_resolve_place_id_falls_back_to_text_search_when_autocomplete_empty():
+    empty_autocomplete = _mock_response({"suggestions": []})
+    text_search_result = _mock_response({"places": [{
+        "id": "abc123", "displayName": {"text": "Patna"},
+        "location": {"latitude": 25.5941, "longitude": 85.1376},
+    }]})
+
+    with patch.object(google_maps.requests, "post", side_effect=[empty_autocomplete, text_search_result]):
+        result = google_maps.resolve_place_id("Patna", api_key="test-key")
+
+    assert result == {"place_id": "abc123", "lat": 25.5941, "lng": 85.1376}
+
+
+def test_resolve_place_id_returns_none_when_nothing_matches():
+    empty_autocomplete = _mock_response({"suggestions": []})
+    empty_text_search = _mock_response({"places": []})
+
+    with patch.object(google_maps.requests, "post", side_effect=[empty_autocomplete, empty_text_search]):
+        assert google_maps.resolve_place_id("asdkjaskdjaskd", api_key="test-key") is None
+
+
 def test_api_errors_propagate_for_caller_to_handle():
     """These wrapper functions must raise on failure, not swallow errors — the
     orchestrator/architect layer is responsible for the try/except fallback,

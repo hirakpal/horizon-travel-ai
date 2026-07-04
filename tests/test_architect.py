@@ -186,11 +186,15 @@ def test_run_grounds_matching_segment_titles_in_real_places(monkeypatch):
     ])
 
     with patch.object(agent, "llm") as mock_llm, \
+         patch.object(google_maps, "resolve_place_id", return_value={"place_id": "kol1", "lat": 22.57, "lng": 88.36}), \
          patch.object(google_maps, "text_search_places", return_value=FAKE_PLACES) as mock_search:
         mock_llm.with_structured_output.return_value.invoke.return_value = day
         result = agent.run(state, "build it")
 
     assert mock_search.call_count == 2  # one attractions search, one restaurant search
+    # Every search this run made was biased toward the resolved destination coordinate
+    for call in mock_search.call_args_list:
+        assert call.kwargs["location_bias"] == {"lat": 22.57, "lng": 88.36}
     segments = result["itinerary"]["itinerary"][0]["segments"]
     assert segments[0]["place_id"] == "p1"
     assert segments[0]["rating"] == 4.6
@@ -217,6 +221,7 @@ def test_run_applies_real_walking_distance_between_grounded_segments(monkeypatch
     ])
 
     with patch.object(agent, "llm") as mock_llm, \
+         patch.object(google_maps, "resolve_place_id", return_value={"place_id": "kol1", "lat": 22.57, "lng": 88.36}), \
          patch.object(google_maps, "text_search_places", return_value=FAKE_PLACES), \
          patch.object(google_maps, "compute_walking_route",
                        return_value={"distance_km": 1.2, "duration_min": 15}) as mock_route:
@@ -240,9 +245,31 @@ def test_run_degrades_gracefully_when_places_search_fails(monkeypatch):
     state.preferences.days = 1
 
     with patch.object(agent, "llm") as mock_llm, \
+         patch.object(google_maps, "resolve_place_id", side_effect=Exception("503")), \
          patch.object(google_maps, "text_search_places", side_effect=Exception("503")):
         mock_llm.with_structured_output.return_value.invoke.return_value = _fake_day(1)
         result = agent.run(state, "build it")
 
     assert result["itinerary"]["itinerary"][0]["n"] == 1
     assert "place_id" not in result["itinerary"]["itinerary"][0]["segments"][0]
+
+
+def test_run_degrades_gracefully_when_place_id_resolution_fails_but_search_succeeds(monkeypatch):
+    """resolve_place_id is a nice-to-have precision improvement, not a
+    dependency — if it fails, the plain (unbiased) text search must still run
+    and ground the itinerary."""
+    monkeypatch.setenv("GOOGLE_MAPS_API_KEY", "test-key")
+    agent = ItineraryArchitectAgent()
+    state = TravelState(session_id="test")
+    state.preferences.destination = "Kolkata"
+    state.preferences.days = 1
+
+    with patch.object(agent, "llm") as mock_llm, \
+         patch.object(google_maps, "resolve_place_id", side_effect=Exception("network down")), \
+         patch.object(google_maps, "text_search_places", return_value=FAKE_PLACES) as mock_search:
+        mock_llm.with_structured_output.return_value.invoke.return_value = _fake_day(1)
+        agent.run(state, "build it")
+
+    assert mock_search.call_count == 2
+    for call in mock_search.call_args_list:
+        assert call.kwargs["location_bias"] is None

@@ -137,11 +137,25 @@ class ItineraryArchitectAgent(BaseAgent):
         if not api_key or not destination:
             return []
         try:
+            # Resolve the destination to a place_id/coordinate once and bias every
+            # search around it — a bare city name like "Patna" or "Springfield" can
+            # match a same-named place anywhere in the world, so without this a
+            # plain text search can silently return attractions in the wrong country.
+            location_bias = None
+            try:
+                resolved = google_maps.resolve_place_id(destination, api_key)
+                if resolved:
+                    location_bias = {"lat": resolved["lat"], "lng": resolved["lng"]}
+            except Exception:
+                location_bias = None
+
             attractions = google_maps.text_search_places(
-                f"top tourist attractions in {destination}", api_key, max_results=8)
+                f"top tourist attractions in {destination}", api_key, max_results=8,
+                location_bias=location_bias)
             cuisine = " ".join((food_preferences or [])).replace("_", " ").strip()
             query = f"best {cuisine} restaurants in {destination}" if cuisine else f"best restaurants in {destination}"
-            restaurants = google_maps.text_search_places(query, api_key, max_results=8)
+            restaurants = google_maps.text_search_places(
+                query, api_key, max_results=8, location_bias=location_bias)
             return attractions + restaurants
         except Exception:
             return []
