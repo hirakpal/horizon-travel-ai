@@ -7,14 +7,13 @@ class BaseAgent(ABC):
     def __init__(self, name: str, system_prompt: str):
         self.name = name
         self.system_prompt = system_prompt
-        # Initialize the shared LLM client
-        # Using OpenRouter as the API gateway
+        # Using a cheaper model if available, or just keeping the token limit
         self.llm = ChatOpenAI(
-            model="gpt-4o",
-            temperature=0.7,
+            model="openai/gpt-4o-mini", # Switch to -mini to save significantly on credits
+            temperature=0,             # Keep temp 0 for extraction
             openai_api_key=os.environ.get("OPENROUTER_API_KEY"),
-            openai_api_base="https://openrouter.ai/api/v1",
-            max_tokens=2000
+            openai_api_base="[https://openrouter.ai/api/v1](https://openrouter.ai/api/v1)",
+            max_tokens=1000            # Explicit limit
         )
 
     @abstractmethod
