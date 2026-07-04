@@ -9,12 +9,15 @@ st.set_page_config(page_title="Horizon • Travel AI", page_icon="🌊", layout=
 st.markdown("""
 <style>
     .main-header { font-family: 'Playfair Display', serif; color: #FF6B6B; text-align: center; }
-    .hero { border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
-    .nav-button { 
-        background: linear-gradient(90deg, #FF6B6B, #FFB800); 
-        color: white; border: none; padding: 14px 24px; 
-        border-radius: 50px; font-weight: bold; margin: 8px;
+    .hero { border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+    .destination-card { 
+        background: #1e2937; border-radius: 20px; padding: 0; 
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3); overflow: hidden;
+        transition: all 0.4s ease;
     }
+    .destination-card:hover { transform: translateY(-10px); box-shadow: 0 20px 40px rgba(255,107,107,0.3); }
+    .card-image { height: 240px; object-fit: cover; width: 100%; }
+    .card-content { padding: 20px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -33,31 +36,22 @@ def generate_mock_itinerary(dest="Kyoto"):
 
 if page == "Home":
     st.markdown("<h1 class='main-header'>Welcome to Horizon, Hirak! 🌴</h1>", unsafe_allow_html=True)
+    st.image("https://picsum.photos/id/1015/1400/620", use_column_width=True, caption="Your next unforgettable journey begins here")
     
-    # Hero Image
-    st.image("https://picsum.photos/id/1015/1400/600", use_column_width=True, caption="Your next adventure awaits")
-    
-    st.markdown("### Discover destinations that truly match your Travel DNA")
-    
-    # Quick Navigation Buttons
+    st.subheader("Quick Start Your Adventure")
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        if st.button("💬 Start Chat", use_container_width=True):
+        if st.button("💬 Chat with Horizon", use_container_width=True):
             st.switch_page("Chat")
     with col2:
-        if st.button("📍 Browse Destinations", use_container_width=True):
+        if st.button("✨ Browse Destinations", use_container_width=True):
             st.switch_page("Explore")
     with col3:
-        if st.button("🗺️ View Itinerary", use_container_width=True):
+        if st.button("🗺️ My Itinerary", use_container_width=True):
             st.switch_page("Itinerary")
     with col4:
-        if st.button("🧬 My Travel DNA", use_container_width=True):
+        if st.button("🧬 Travel DNA", use_container_width=True):
             st.switch_page("Travel DNA")
-    
-    st.divider()
-    st.subheader("Your Next Trip Suggestion")
-    st.success("**Kyoto, Japan** • October 2026 • 8 Days")
-    st.info("High match with your temple affinity and photography interest.")
 
 elif page == "Chat":
     st.title("💬 Chat with Horizon")
@@ -102,16 +96,16 @@ elif page == "Explore":
     st.caption("Curated based on your Travel DNA preferences")
     
     destinations = [
-        ("Kyoto, Japan", "Immerse yourself in timeless temples, serene gardens, and the magical cherry blossom season in Japan's cultural capital.", "97%", "https://picsum.photos/id/1015/600/280"),
+        ("Kyoto, Japan", "Immerse yourself in timeless temples, serene gardens, and the magical cherry blossom season.", "97%", "https://picsum.photos/id/1015/600/280"),
         ("Bali, Indonesia", "Discover golden beaches, lush rice terraces, spiritual yoga retreats, and vibrant Hindu culture.", "92%", "https://picsum.photos/id/1016/600/280"),
-        ("Paris, France", "Stroll along the Seine, visit iconic museums, enjoy world-class cuisine and romantic Parisian charm.", "88%", "https://picsum.photos/id/1018/600/280"),
+        ("Paris, France", "Stroll along the Seine, visit iconic museums, enjoy world-class cuisine and romantic charm.", "88%", "https://picsum.photos/id/1018/600/280"),
         ("Santorini, Greece", "Experience breathtaking cliffside views, dramatic sunsets, and charming white-washed villages.", "91%", "https://picsum.photos/id/102/600/280"),
-        ("Swiss Alps, Switzerland", "Journey through majestic mountains, crystal-clear lakes, and charming alpine villages by scenic train.", "85%", "https://picsum.photos/id/103/600/280"),
-        ("Marrakech, Morocco", "Wander bustling souks, experience vibrant colors, spices, and traditional riad hospitality.", "79%", "https://picsum.photos/id/104/600/280"),
-        ("Banff, Canada", "Explore turquoise glacial lakes, towering peaks, and abundant wildlife in this iconic national park.", "82%", "https://picsum.photos/id/105/600/280"),
-        ("Barcelona, Spain", "Admire Gaudí’s architectural wonders, relax on Mediterranean beaches, and savor tapas culture.", "87%", "https://picsum.photos/id/106/600/280"),
-        ("Queenstown, New Zealand", "Dive into adventure with bungee jumping, jet boating, and hiking in stunning fjord landscapes.", "76%", "https://picsum.photos/id/107/600/280"),
-        ("Dubai, UAE", "Marvel at futuristic skyscrapers, enjoy luxury shopping, desert safaris, and world-class entertainment.", "81%", "https://picsum.photos/id/108/600/280")
+        ("Swiss Alps, Switzerland", "Journey through majestic mountains and scenic trains in this alpine paradise.", "85%", "https://picsum.photos/id/103/600/280"),
+        ("Marrakech, Morocco", "Wander bustling souks, experience vibrant markets, and traditional riad hospitality.", "79%", "https://picsum.photos/id/104/600/280"),
+        ("Banff, Canada", "Explore turquoise lakes, towering peaks, and abundant wildlife.", "82%", "https://picsum.photos/id/105/600/280"),
+        ("Barcelona, Spain", "Admire Gaudí’s masterpieces, enjoy Mediterranean beaches and tapas culture.", "87%", "https://picsum.photos/id/106/600/280"),
+        ("Queenstown, New Zealand", "Dive into adventure with bungee jumping and stunning fjord landscapes.", "76%", "https://picsum.photos/id/107/600/280"),
+        ("Dubai, UAE", "Marvel at futuristic architecture, luxury, and desert adventures.", "81%", "https://picsum.photos/id/108/600/280")
     ]
     
     cols = st.columns(2)
@@ -129,7 +123,6 @@ elif page == "Explore":
             """, unsafe_allow_html=True)
             
             if st.button(f"🌟 Plan Trip to {name.split(',')[0]}", key=f"plan_{i}"):
-                st.session_state.current_destination = name
-                st.success(f"Creating full personalized itinerary for **{name}**...")
+                st.success(f"Creating personalized itinerary for **{name}**...")
 
 st.caption("Horizon Travel AI • Capstone Demo")
