@@ -31,12 +31,14 @@ class RootOrchestrator:
         if is_ready:
             # Trigger Architect
             architect_result = self.architect.run(state, user_input)
+            
+            # Clean and parse the response
             raw_json = architect_result['itinerary'].replace("```json", "").replace("```", "").strip()
             state.itinerary_data = json.loads(raw_json)
-            state.active_agent = "Architect" # Explicitly update the agent tracker
-            response = f"I've built your itinerary! Here is the plan: {architect_result['itinerary']}"
             
-            # Trigger DNA Learner in the background
+            response = "I've built your itinerary! Check the Itinerary tab to see it."
+            
+            # Trigger DNA Learner
             self.learner.run(state, user_input)
         else:
             # Trigger Concierge to ask for missing pieces
