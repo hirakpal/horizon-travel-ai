@@ -751,6 +751,7 @@ elif page == "Chat":
         ("mid_range", "🏨", "Mid-range", "3-star comfort"),
         ("luxury", "✨", "Luxury", "5-star resorts"),
         ("boutique", "🎨", "Boutique", "Unique, design-forward stays"),
+        ("no_hotel", "🚫", "No hotel needed", "Staying with family/friends or already sorted"),
     ]
     FOOD_PREF_LABELS = {
         "vegetarian": "🥗 Vegetarian", "vegan": "🌱 Vegan",
@@ -854,15 +855,16 @@ elif page == "Chat":
     elif current_stage == "hotel_food" and not state.preferences.hotel_type:
         st.markdown("#### 🏨 Choose your hotel tier")
         days = state.preferences.days or 1
-        cols = st.columns(4)
+        cols = st.columns(len(HOTEL_TIER_CARDS))
         for col, (tier, icon, label, desc) in zip(cols, HOTEL_TIER_CARDS):
             rate = HOTEL_NIGHTLY_RATES.get(tier, 4000)
+            cost_line = (f"~₹{rate:,}/night<br><b>₹{rate * days:,}</b> for {days} nights"
+                         if tier != "no_hotel" else "<b>₹0</b> — nothing budgeted for lodging")
             with col:
                 st.markdown(
                     f"""<div class="hz-card">
                           <div class="hz-title">{icon} {label}</div>
-                          <div class="hz-body">{desc}<br>~₹{rate:,}/night<br>
-                          <b>₹{rate * days:,}</b> for {days} nights</div>
+                          <div class="hz-body">{desc}<br>{cost_line}</div>
                         </div>""", unsafe_allow_html=True)
                 if st.button(f"Select {label}", key=f"hotel_{tier}", width="stretch"):
                     orchestrator.select_hotel_tier(state, tier)

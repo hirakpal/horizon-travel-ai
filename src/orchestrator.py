@@ -21,7 +21,25 @@ ARRIVAL_TIME_CHOICES = [
     ("night", ("night", "midnight", "late night")),
 ]
 
+NO_HOTEL_KEYWORDS = (
+    "no hotel",
+    "not need a hotel", "not need any hotel", "not need hotel",
+    "don't need a hotel", "don't need any hotel", "don't need hotel",
+    "dont need a hotel", "dont need any hotel", "dont need hotel",
+    "do not need a hotel", "do not need any hotel", "do not need hotel",
+    "won't need a hotel", "won't need any hotel", "won't need hotel",
+    "wont need a hotel", "wont need any hotel", "wont need hotel",
+    "will not need a hotel", "will not need any hotel", "will not need hotel",
+    "no need for a hotel", "no need for any hotel", "no need for hotel",
+    "no need of a hotel", "no need of any hotel", "no need of hotel",
+    "don't require a hotel", "dont require a hotel", "don't require hotel", "dont require hotel",
+    "no accommodation", "not staying in a hotel", "not staying at a hotel", "not staying in any hotel",
+    "no stay needed", "already have a place", "already booked a place", "already have accommodation",
+    "staying with family", "staying with friends", "skip the hotel", "skip hotel",
+)
+
 HOTEL_TYPE_CHOICES = [
+    ("no_hotel", NO_HOTEL_KEYWORDS),
     ("luxury", ("luxury", "5 star", "5-star", "five star", "five-star")),
     ("boutique", ("boutique", "design hotel", "unique stay")),
     ("budget", ("budget", "hostel", "cheap", "backpacker")),
@@ -55,7 +73,7 @@ BUDGET_UNCERTAIN_PATTERNS = (
     "don't have a budget", "dont have a budget", "no idea about the budget", "no idea on budget",
 )
 
-HOTEL_NIGHTLY_RATES = {"budget": 2500, "mid_range": 5000, "luxury": 9000, "boutique": 7000}
+HOTEL_NIGHTLY_RATES = {"budget": 2500, "mid_range": 5000, "luxury": 9000, "boutique": 7000, "no_hotel": 0}
 DEFAULT_NIGHTLY_RATE = 4000
 DAILY_ACTIVITIES_BUFFER = 800
 
@@ -491,13 +509,19 @@ class RootOrchestrator:
         advice = self._checkin_advice(option["mode"], option["departure"])
         state.preferences.return_checkin_advice = advice
         advice_note = f"\n\n🕐 {advice}" if advice else ""
-        response = "Return journey booked!" + advice_note + "\n\n" + self._hotel_type_prompt()
+        response = "Return journey booked!" + advice_note + "\n\n" + self._hotel_type_prompt(state)
         state.preferences.planning_stage = self._current_stage(state.preferences, bool(state.itinerary_data))
         state.messages.append({"role": "assistant", "content": response})
         return response
 
-    def _hotel_type_prompt(self) -> str:
-        return "What type of hotel do you prefer? **Budget, Mid-range, Luxury, or Boutique.**"
+    def _hotel_type_prompt(self, state: TravelState = None) -> str:
+        destination = state.preferences.destination if state and state.preferences.destination else "your destination"
+        return (f"What type of hotel do you prefer in {destination}? **Budget, Mid-range, Luxury, or "
+                f"Boutique** — or just let me know if you don't need a hotel (staying with family, "
+                f"already booked elsewhere, etc.).")
+
+    def _hotel_tier_note(self, tier: str) -> str:
+        return "Got it — no hotel needed, I won't budget for one. " if tier == "no_hotel" else ""
 
     def _food_preferences_prompt(self) -> str:
         return ("What are your food preferences? **Vegetarian, Vegan, Non-vegetarian, or No "
@@ -513,10 +537,11 @@ class RootOrchestrator:
         if matched:
             state.preferences.hotel_type = matched
             state.preferences.hotel_cost_per_night = HOTEL_NIGHTLY_RATES.get(matched, DEFAULT_NIGHTLY_RATE)
+            tier_note = self._hotel_tier_note(matched)
             budget_note = self._maybe_estimate_budget(state)
-            return budget_note + self._handle_food_preferences(state, user_input, prompt_only=True)
+            return tier_note + budget_note + self._handle_food_preferences(state, user_input, prompt_only=True)
 
-        return self._hotel_type_prompt()
+        return self._hotel_type_prompt(state)
 
     def select_hotel_tier(self, state: TravelState, tier: str) -> str:
         """Called directly by the UI when the user clicks a hotel tier card."""
@@ -525,8 +550,9 @@ class RootOrchestrator:
 
         label = tier.replace('_', ' ').title()
         state.messages.append({"role": "user", "content": f"[Selected hotel tier: {label}]"})
+        tier_note = self._hotel_tier_note(tier)
         budget_note = self._maybe_estimate_budget(state)
-        response = budget_note + self._food_preferences_prompt()
+        response = tier_note + budget_note + self._food_preferences_prompt()
         state.preferences.planning_stage = self._current_stage(state.preferences, bool(state.itinerary_data))
         state.messages.append({"role": "assistant", "content": response})
         return response

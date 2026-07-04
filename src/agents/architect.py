@@ -47,11 +47,12 @@ class ItineraryArchitectAgent(BaseAgent):
         total_days = p.days or 1
         candidates = self._fetch_place_candidates(p.destination, p.food_preferences)
 
+        no_hotel = p.hotel_type == "no_hotel"
         used_names = set()
         day_entries = []
         for day_n in range(1, total_days + 1):
             day = self._build_day(state, day_n, total_days, candidates, used_names)
-            day = self._backfill_day(day)
+            day = self._backfill_day(day, no_hotel=no_hotel)
             if candidates:
                 day = self._ground_day_with_real_places(day, candidates, used_names)
             day_entries.append(day)
@@ -73,10 +74,13 @@ class ItineraryArchitectAgent(BaseAgent):
         elif day_n == total_days:
             position_note = "This is the last day — keep the pace relaxed and account for departure logistics."
             if p.return_transport_suggestions and p.departure_time:
+                luggage_note = ("collect luggage from the hotel" if p.hotel_type != "no_hotel"
+                                 else "collect luggage (no hotel booked — the traveler is not staying "
+                                      "overnight anywhere at the destination before departure)")
                 position_note += (
                     f" Return journey: {p.return_transport_suggestions}, matching the traveler's "
-                    f"{p.departure_time} departure preference — wind the day down with enough buffer "
-                    f"to get back to the hotel, collect luggage, and reach the departure point on time."
+                    f"{p.departure_time} departure preference — wind the day down with enough buffer to "
+                    f"{luggage_note} and reach the departure point on time."
                 )
 
         places_note = self._places_note(candidates, used_names)
@@ -113,18 +117,19 @@ class ItineraryArchitectAgent(BaseAgent):
         )
         return f"Real places researched for this destination (prefer these by exact name):\n{lines}"
 
-    def _backfill_day(self, day: dict) -> dict:
+    def _backfill_day(self, day: dict, no_hotel: bool = False) -> dict:
         """Deterministic safety net: LLMs don't reliably fill every optional field
         even when told to. Never show a blank cost/crowd/transport chip in the UI —
         fill anything missing with a clearly-labeled, sensible default instead."""
         segments = day.get("segments", [])
+        last_segment_default = "Head onward" if no_hotel else "Return to hotel"
         for i, seg in enumerate(segments):
             if seg.get("cost") is None:
                 seg["cost"] = 0
             if not seg.get("crowd") or seg["crowd"] not in CROWD_LEVELS:
                 seg["crowd"] = "moderate"
             if not seg.get("transport"):
-                seg["transport"] = "Return to hotel" if i == len(segments) - 1 else "Walk"
+                seg["transport"] = last_segment_default if i == len(segments) - 1 else "Walk"
         return day
 
     def _fetch_place_candidates(self, destination: str, food_preferences: list) -> list:
