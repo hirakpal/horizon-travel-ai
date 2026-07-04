@@ -42,11 +42,17 @@ class RootOrchestrator:
                 state.itinerary_data = json.loads(match.group(0))
                 # HAND-OFF: Trigger DNA Learner
                 self.learner.run(state, user_input, plan=state.itinerary_data)
-                self.learner.run(state, user_input, plan=state.itinerary_data)
                 # Keep the chat response brief
                 response = "I've built the perfect itinerary for your trip! Please head over to the **Itinerary** tab to view your day-by-day plan."
             else:
                 response = "I've finalized your travel plan. Please check the Itinerary tab to view it."
+            # Budget Spill Check
+            if state.preferences.budget and state.preferences.destination:
+                estimated_cost = self.estimate_trip_cost(state.preferences.destination, state.preferences.days)
+            if estimated_cost > state.preferences.budget:
+                return (f"⚠️ Budget Alert: A {state.preferences.days}-day trip to {state.preferences.destination} "
+                        f"is estimated at {estimated_cost} INR, which exceeds your {state.preferences.budget} INR budget. "
+                        "Would you like to adjust your trip length or look at cheaper destination alternatives?")
         else:
             # Fallback to Concierge ONLY if not ready
             state.active_agent = "Concierge"
