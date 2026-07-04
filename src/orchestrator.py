@@ -2,7 +2,11 @@
 
 import json
 from src.models.state import TravelState
-
+# Add these imports
+from src.agents.concierge import ConciergeAgent
+from src.agents.extractor import PreferenceExtractionAgent
+from src.agents.architect import ItineraryArchitectAgent
+from src.agents.dna_learner import DNALearnerAgent
 class RootOrchestrator:
     def __init__(self):
         self.concierge = ConciergeAgent()
