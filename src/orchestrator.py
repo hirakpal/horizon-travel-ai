@@ -3,7 +3,7 @@ from src.agents.concierge import ConciergeAgent
 from src.agents.extractor import PreferenceExtractionAgent
 from src.agents.architect import ItineraryArchitectAgent
 from src.agents.dna_learner import DNALearnerAgent
-
+import json
 class RootOrchestrator:
     def __init__(self):
         self.concierge = ConciergeAgent()
