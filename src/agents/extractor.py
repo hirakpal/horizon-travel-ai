@@ -13,7 +13,7 @@ class PreferenceExtractionAgent(BaseAgent):
 
     def run(self, state: TravelState, input_text: str) -> dict:
         # Create a structured LLM call
-        structured_llm = self.llm.with_structured_output(TravelPreferences)
+        structured_llm = self.llm.with_structured_output(TravelPreferences, method="function_calling")
         
         # Prepare the current state as context for the model
         current_prefs_json = state.preferences.model_dump_json()

@@ -13,7 +13,7 @@ class TravelPreferences(BaseModel):
     # Transport & arrival preferences
     arrival_time: Optional[str] = Field(None, description="Preferred arrival time (early_morning, morning, afternoon, evening, late_evening, night)")
     transport_modes: Optional[List[str]] = Field(default_factory=list, description="Preferred transport modes (flight, rail, bus, sea)")
-    transport_suggestions: Optional[dict] = Field(None, description="Transport suggestions from search (price, duration, etc)")
+    transport_suggestions: Optional[str] = Field(None, description="Transport suggestions summary text from search (price, duration, etc)")
     
     # Hotel preferences
     hotel_type: Optional[str] = Field(None, description="Hotel preference (budget, mid_range, luxury, boutique)")
