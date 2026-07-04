@@ -734,45 +734,46 @@ elif page == "Chat":
 # ITINERARY — destination-aware, rich cards, one-click PDF
 # ============================================================================
 elif page == "Itinerary":
-    dest = st.session_state.current_destination
-    it = get_itinerary(dest)
+    st.markdown("## 📍 Your AI-Generated Itinerary")
+    
+    # Check if the Architect has populated the state
+    if "itinerary_data" not in st.session_state.travel_state.__dict__ or not st.session_state.travel_state.itinerary_data:
+        st.info("Your itinerary is still being planned. Please complete your chat request first!")
+    else:
+        it = st.session_state.travel_state.itinerary_data
+        
+        # Summary Header
+        st.markdown(f"### Plan Overview")
+        st.write(f"Total Budget: ₹{it.get('total_budget', 'N/A')}")
+        st.write(f"Total Estimated Spend: ₹{it.get('total_spent', 'N/A')}")
+        rule()
 
-    head, action = st.columns([3, 1], vertical_alignment="center")
-    with head:
-        st.markdown(f"## 📍 {dest}")
-        st.markdown(f'<p style="color:#94A3B8;margin-top:-.4rem">{it["month"]} · '
-                    f'{len(it["days"])} days · group of {it["group"]} · budget '
-                    f'{it["budget_label"]}</p>', unsafe_allow_html=True)
-    with action:
-        st.download_button("📄 Export PDF", data=itinerary_pdf(dest, it),
-                           file_name=f"Horizon_{dest.split(',')[0]}.pdf",
-                           mime="application/pdf", width="stretch")
-
-    evidence_block(*it["overall"], key="it-overall")
-    rule()
-
-    total_walk = sum(d["walk"] for d in it["days"])
-    total_cost = sum(s["cost"] or 0 for d in it["days"] for s in d["segments"])
-    n_stops = sum(len(d["segments"]) for d in it["days"])
-    fallbacks = sum(1 for d in it["days"] for s in d["segments"] if s["alt"])
-    c1, c2, c3, c4 = st.columns(4)
-    with c1:
-        stat(f"{total_walk:.0f} km", "total walking")
-    with c2:
-        stat(f"{it['currency']}{total_cost:,}" if total_cost else "—", "planned spend")
-    with c3:
-        stat(str(n_stops), "planned stops")
-    with c4:
-        stat(str(fallbacks), "fallbacks ready")
-
-    for day in it["days"]:
-        st.markdown(
-            f"""<div class="hz-day"><span class="n">Day {day['n']}</span>
-                  <span class="t">{day['date']} · {html.escape(day['theme'])}</span>
-                  <span class="w">{day['weather']} · {day['walk']:.1f} km on foot</span>
-                </div>""", unsafe_allow_html=True)
-        for k, s in enumerate(day["segments"]):
-            segment_card(s, it["currency"], key=f"d{day['n']}s{k}")
+        # Render Day Cards
+        for day in it.get("itinerary", []):
+            st.markdown(f"""<div class="hz-day">
+                            <span class="n">Day {day['day']}</span>
+                            <span class="t">{html.escape(day['title'])}</span>
+                            <span class="w">Total: ₹{day.get('total_cost', 0)}</span>
+                        </div>""", unsafe_allow_html=True)
+            
+            for act in day.get("activities", []):
+                # Mapping your Architect's JSON fields to your segment_card helper
+                segment = {
+                    "time": act["time"],
+                    "dur": 60, # Mocked duration
+                    "icon": "📍",
+                    "title": act["activity"],
+                    "desc": act["activity"],
+                    "conf": 90, # Default confidence
+                    "evidence": [("pref", "Based on your DNA")],
+                    "cost": act["cost"],
+                    "transport": None,
+                    "walk": 0.0,
+                    "crowd": "moderate",
+                    "note": None,
+                    "alt": None
+                }
+                segment_card(segment, "₹", key=f"d{day['day']}a{act['time']}")
 
 
 # ============================================================================
