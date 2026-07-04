@@ -6,6 +6,7 @@ os.environ.setdefault("OPENROUTER_API_KEY", "test-key")
 
 from src.orchestrator import RootOrchestrator
 from src.models.state import TravelState
+from src.models.preferences import TravelPreferences
 
 
 def _orchestrator():
@@ -32,6 +33,31 @@ def test_missing_basic_info_prompts_for_it():
         response = orchestrator.process_turn(state, "hi there")
     assert state.preferences.planning_stage == "basic_info"
     assert "origin" in response and "destination" in response
+
+
+def test_planning_stage_updates_after_extractor_fills_in_last_basic_field():
+    """Regression test: the extractor replaces state.preferences with a brand new
+    object rather than mutating it in place. process_turn must read the final
+    planning_stage off the live state.preferences, not a pre-extraction local
+    variable — otherwise the stage chip stays stuck on "basic_info" forever even
+    once all the basic fields are actually filled in."""
+    orchestrator = _orchestrator()
+    state = TravelState(session_id="test")
+    state.preferences.destination = "North Goa"
+    state.preferences.days = 5
+    state.preferences.budget = 18000
+
+    filled_prefs = TravelPreferences(
+        destination="North Goa", days=5, budget=18000, origin="Bangalore", month="July")
+
+    with patch.object(orchestrator.extractor, "run",
+                       return_value={"updated_preferences": filled_prefs}), \
+         patch.object(orchestrator.concierge, "run",
+                       return_value={"reply": "All set, moving on!"}):
+        orchestrator.process_turn(state, "Bangalore")
+
+    assert state.preferences.origin == "Bangalore"
+    assert state.preferences.planning_stage == "transport"
 
 
 def test_full_stage_progression_to_ready_to_plan():
