@@ -9,15 +9,12 @@ st.set_page_config(page_title="Horizon • Travel AI", page_icon="🌊", layout=
 st.markdown("""
 <style>
     .main-header { font-family: 'Playfair Display', serif; color: #FF6B6B; text-align: center; }
-    .destination-card { 
-        background: #1e2937; border-radius: 16px; padding: 0; 
-        box-shadow: 0 10px 30px rgba(0,0,0,0.3); overflow: hidden;
-        transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+    .hero { border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+    .nav-button { 
+        background: linear-gradient(90deg, #FF6B6B, #FFB800); 
+        color: white; border: none; padding: 14px 24px; 
+        border-radius: 50px; font-weight: bold; margin: 8px;
     }
-    .destination-card:hover { transform: translateY(-12px); box-shadow: 0 20px 40px rgba(255,107,107,0.3); }
-    .card-image { height: 240px; object-fit: cover; width: 100%; }
-    .card-content { padding: 20px; }
-    .match-bar { height: 6px; background: linear-gradient(90deg, #FF6B6B, #FFB800); border-radius: 10px; margin: 8px 0; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -36,8 +33,31 @@ def generate_mock_itinerary(dest="Kyoto"):
 
 if page == "Home":
     st.markdown("<h1 class='main-header'>Welcome to Horizon, Hirak! 🌴</h1>", unsafe_allow_html=True)
-    st.image("https://picsum.photos/id/1015/1200/500", use_column_width=True)
-    st.subheader("Your Next Trip Suggestion: Kyoto, Japan • October 2026")
+    
+    # Hero Image
+    st.image("https://picsum.photos/id/1015/1400/600", use_column_width=True, caption="Your next adventure awaits")
+    
+    st.markdown("### Discover destinations that truly match your Travel DNA")
+    
+    # Quick Navigation Buttons
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        if st.button("💬 Start Chat", use_container_width=True):
+            st.switch_page("Chat")
+    with col2:
+        if st.button("📍 Browse Destinations", use_container_width=True):
+            st.switch_page("Explore")
+    with col3:
+        if st.button("🗺️ View Itinerary", use_container_width=True):
+            st.switch_page("Itinerary")
+    with col4:
+        if st.button("🧬 My Travel DNA", use_container_width=True):
+            st.switch_page("Travel DNA")
+    
+    st.divider()
+    st.subheader("Your Next Trip Suggestion")
+    st.success("**Kyoto, Japan** • October 2026 • 8 Days")
+    st.info("High match with your temple affinity and photography interest.")
 
 elif page == "Chat":
     st.title("💬 Chat with Horizon")
@@ -110,6 +130,6 @@ elif page == "Explore":
             
             if st.button(f"🌟 Plan Trip to {name.split(',')[0]}", key=f"plan_{i}"):
                 st.session_state.current_destination = name
-                st.success(f"Generating your personalized itinerary for **{name}**...")
+                st.success(f"Creating full personalized itinerary for **{name}**...")
 
 st.caption("Horizon Travel AI • Capstone Demo")
