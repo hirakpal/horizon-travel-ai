@@ -696,7 +696,10 @@ elif page == "Chat":
     from openai import OpenAI
     
     if "openai_client" not in st.session_state:
-        st.session_state.openai_client = OpenAI() # Ensure OPENAI_API_KEY is in your environment
+    st.session_state.openai_client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=os.getenv("OPENROUTER_API_KEY") # Explicitly load the key
+    )
     if "extractor_agent" not in st.session_state:
         st.session_state.extractor_agent = PreferenceExtractorAgent(st.session_state.openai_client)
 
