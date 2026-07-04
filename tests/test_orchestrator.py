@@ -19,6 +19,31 @@ def _no_op_extractor(orchestrator):
     return patch.object(orchestrator.extractor, "run", return_value={"updated_preferences": None})
 
 
+def test_checkin_advice_per_transport_mode():
+    orchestrator = _orchestrator()
+    assert "2h buffer" in orchestrator._checkin_advice("flight", "09:30 AM")
+    assert "07:30 AM" in orchestrator._checkin_advice("flight", "09:30 AM")
+    assert "the airport" in orchestrator._checkin_advice("flight", "09:30 AM")
+
+    assert "45 min buffer" in orchestrator._checkin_advice("train", "08:00 PM")
+    assert "07:15 PM" in orchestrator._checkin_advice("train", "08:00 PM")
+    assert "the railway station" in orchestrator._checkin_advice("train", "08:00 PM")
+
+    assert "20 min buffer" in orchestrator._checkin_advice("bus", "06:00 AM")
+    assert "the bus terminus" in orchestrator._checkin_advice("bus", "06:00 AM")
+
+    assert "90 min buffer" in orchestrator._checkin_advice("ship", "10:00 AM")
+    assert "08:30 AM" in orchestrator._checkin_advice("ship", "10:00 AM")
+    assert "the port" in orchestrator._checkin_advice("ship", "10:00 AM")
+
+
+def test_checkin_advice_handles_unparseable_or_unknown_mode_gracefully():
+    orchestrator = _orchestrator()
+    assert orchestrator._checkin_advice("car", "09:00 AM") == ""
+    assert orchestrator._checkin_advice("flight", "not a time") == ""
+    assert orchestrator._checkin_advice("flight", "") == ""
+
+
 def test_orchestration_loop():
     orchestrator = _orchestrator()
     state = TravelState(session_id="test")
@@ -91,7 +116,8 @@ def test_full_stage_progression_to_ready_to_plan():
     state.preferences.budget = 100000
 
     with _no_op_extractor(orchestrator), \
-         patch.object(orchestrator.transport, "run", side_effect=Exception("no llm")):
+         patch.object(orchestrator.transport, "run", side_effect=Exception("no llm")), \
+         patch.object(orchestrator.transport, "run_return", side_effect=Exception("no llm")):
         r1 = orchestrator.process_turn(state, "early morning please")
         assert state.preferences.arrival_time == "early_morning"
         assert state.transport_options  # fallback mock options populated for the UI cards
@@ -101,7 +127,17 @@ def test_full_stage_progression_to_ready_to_plan():
         r1b = orchestrator.process_turn(state, "flight")
         assert state.preferences.transport_suggestions is not None
         assert state.preferences.transport_cost is not None
-        assert "hotel" in r1b.lower()
+        assert "return" in r1b.lower()
+
+        r1c = orchestrator.process_turn(state, "evening")
+        assert state.preferences.departure_time == "evening"
+        assert state.transport_options
+        assert "pick one" in r1c.lower()
+
+        r1d = orchestrator.process_turn(state, "train")
+        assert state.preferences.return_transport_suggestions is not None
+        assert state.preferences.return_transport_cost is not None
+        assert "hotel" in r1d.lower()
 
         r2 = orchestrator.process_turn(state, "a luxury hotel")
         assert state.preferences.hotel_type == "luxury"
@@ -142,6 +178,8 @@ def test_ready_to_plan_budget_alert():
     state.preferences.budget = 1000
     state.preferences.arrival_time = "morning"
     state.preferences.transport_suggestions = "x"
+    state.preferences.departure_time = "evening"
+    state.preferences.return_transport_suggestions = "x"
     state.preferences.hotel_type = "luxury"
     state.preferences.food_preferences = ["vegetarian"]
 
@@ -160,6 +198,8 @@ def test_affirmative_confirmation_triggers_itinerary_build():
     state.preferences.budget = 100000
     state.preferences.arrival_time = "morning"
     state.preferences.transport_suggestions = "x"
+    state.preferences.departure_time = "evening"
+    state.preferences.return_transport_suggestions = "x"
     state.preferences.hotel_type = "mid_range"
     state.preferences.food_preferences = ["vegetarian"]
 
@@ -193,6 +233,8 @@ def test_architect_failure_keeps_user_at_ready_to_plan():
     state.preferences.budget = 100000
     state.preferences.arrival_time = "morning"
     state.preferences.transport_suggestions = "x"
+    state.preferences.departure_time = "evening"
+    state.preferences.return_transport_suggestions = "x"
     state.preferences.hotel_type = "mid_range"
     state.preferences.food_preferences = ["vegetarian"]
 
@@ -226,7 +268,7 @@ def test_replan_resets_state():
 # Interactive card selection (transport / hotel / food) — the UI calls these
 # methods directly on a button click, bypassing process_turn's text parsing.
 # ============================================================================
-def test_select_transport_option_sets_cost_and_advances_to_hotel_prompt():
+def test_select_transport_option_sets_cost_and_advances_to_departure_time_prompt():
     orchestrator = _orchestrator()
     state = TravelState(session_id="test")
     state.preferences.origin = "Mumbai"
@@ -235,8 +277,8 @@ def test_select_transport_option_sets_cost_and_advances_to_hotel_prompt():
     state.preferences.budget = 50000
     state.preferences.arrival_time = "morning"
     state.transport_options = [
-        {"mode": "flight", "price": 6000, "duration": "2h", "departure": "09:00",
-         "arrival": "11:00", "why": "fastest"},
+        {"mode": "flight", "price": 6000, "duration": "2h", "departure": "09:00 AM",
+         "arrival": "11:00 AM", "why": "fastest"},
     ]
 
     response = orchestrator.select_transport_option(state, state.transport_options[0])
@@ -244,10 +286,45 @@ def test_select_transport_option_sets_cost_and_advances_to_hotel_prompt():
     assert state.preferences.transport_cost == 6000
     assert state.preferences.transport_suggestions is not None
     assert state.transport_options == []  # cards cleared once a choice is made
-    assert "hotel" in response.lower()
-    assert state.preferences.planning_stage == "hotel_food"
+    assert "return" in response.lower()
+    assert state.preferences.planning_stage == "transport"
+    # "Smart" check-in buffer advice: a flight needs a 2h buffer before its
+    # stated departure time.
+    assert state.preferences.checkin_advice is not None
+    assert "07:00 AM" in state.preferences.checkin_advice
+    assert "the airport" in state.preferences.checkin_advice
     # The selection is recorded in the transcript like a normal turn
     assert any("flight" in m["content"].lower() for m in state.messages if m["role"] == "user")
+
+
+def test_select_return_transport_option_sets_cost_and_advances_to_hotel_prompt():
+    orchestrator = _orchestrator()
+    state = TravelState(session_id="test")
+    state.preferences.origin = "Mumbai"
+    state.preferences.destination = "Goa"
+    state.preferences.days = 3
+    state.preferences.budget = 50000
+    state.preferences.arrival_time = "morning"
+    state.preferences.transport_suggestions = "Flight — ₹6,000"
+    state.preferences.transport_cost = 6000
+    state.preferences.departure_time = "evening"
+    state.transport_options = [
+        {"mode": "train", "price": 1500, "duration": "10h", "departure": "08:00 PM",
+         "arrival": "06:00 AM", "why": "overnight and cheap"},
+    ]
+
+    response = orchestrator.select_return_transport_option(state, state.transport_options[0])
+
+    assert state.preferences.return_transport_cost == 1500
+    assert state.preferences.return_transport_suggestions is not None
+    assert state.transport_options == []  # cards cleared once a choice is made
+    assert "hotel" in response.lower()
+    assert state.preferences.planning_stage == "hotel_food"
+    # A train needs a 45-minute buffer before its stated departure time.
+    assert state.preferences.return_checkin_advice is not None
+    assert "07:15 PM" in state.preferences.return_checkin_advice
+    assert "the railway station" in state.preferences.return_checkin_advice
+    assert any("train" in m["content"].lower() for m in state.messages if m["role"] == "user")
 
 
 def test_select_hotel_tier_sets_nightly_rate_and_advances_to_food_prompt():
@@ -278,6 +355,9 @@ def test_select_food_preferences_advances_to_ready_to_plan_summary():
     state.preferences.arrival_time = "morning"
     state.preferences.transport_suggestions = "Flight — ₹6,000"
     state.preferences.transport_cost = 6000
+    state.preferences.departure_time = "evening"
+    state.preferences.return_transport_suggestions = "Train — ₹1,500"
+    state.preferences.return_transport_cost = 1500
     state.preferences.hotel_type = "mid_range"
     state.preferences.hotel_cost_per_night = 5000
 
@@ -302,6 +382,21 @@ def test_budget_breakdown_uses_actual_selections_not_flat_heuristic():
     assert breakdown["hotel_total"] == 2500 * 5
     assert breakdown["grand_total"] == 6500 + 2500 * 5 + 800 * 5
     assert breakdown["over_budget"] is True
+
+
+def test_budget_breakdown_includes_return_transport_cost():
+    orchestrator = _orchestrator()
+    state = TravelState(session_id="test")
+    state.preferences.days = 5
+    state.preferences.budget = 25000
+    state.preferences.transport_cost = 6500
+    state.preferences.return_transport_cost = 4000
+    state.preferences.hotel_cost_per_night = 2500
+
+    breakdown = orchestrator.budget_breakdown(state)
+
+    assert breakdown["transport"] == 6500 + 4000
+    assert breakdown["grand_total"] == 6500 + 4000 + 2500 * 5 + 800 * 5
 
 
 def test_budget_breakdown_defaults_to_zero_before_any_selection():
@@ -335,4 +430,4 @@ def test_typing_transport_mode_name_matches_pending_option_cards():
     response = orchestrator.process_turn(state, "I'll take the train")
 
     assert state.preferences.transport_cost == 1500
-    assert "hotel" in response.lower()
+    assert "return" in response.lower()

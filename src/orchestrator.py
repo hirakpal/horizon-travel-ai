@@ -1,5 +1,7 @@
 # src/orchestrator.py
 
+from datetime import datetime, timedelta
+
 from src.models.state import TravelState
 from src.models.preferences import TravelPreferences
 from src.agents.concierge import ConciergeAgent
@@ -56,6 +58,23 @@ BUDGET_UNCERTAIN_PATTERNS = (
 HOTEL_NIGHTLY_RATES = {"budget": 2500, "mid_range": 5000, "luxury": 9000, "boutique": 7000}
 DEFAULT_NIGHTLY_RATE = 4000
 DAILY_ACTIVITIES_BUFFER = 800
+
+# Realistic recommended check-in buffer before a transport's departure time, and
+# where that buffer applies — used to give "smart" arrive-by advice per mode.
+CHECKIN_BUFFER_MINUTES = {"flight": 120, "train": 45, "bus": 20, "ship": 90}
+CHECKIN_PLACE_LABELS = {"flight": "the airport", "train": "the railway station",
+                         "bus": "the bus terminus", "ship": "the port"}
+
+
+def _subtract_minutes(time_str: str, minutes: int):
+    """Parse a 'HH:MM AM/PM' clock time and return the clock time `minutes`
+    earlier, formatted the same way. Returns None if the string can't be parsed
+    (never crash the chat flow over a formatting quirk in a generated string)."""
+    try:
+        dt = datetime.strptime(time_str.strip(), "%I:%M %p")
+    except (ValueError, AttributeError):
+        return None
+    return (dt - timedelta(minutes=minutes)).strftime("%I:%M %p")
 
 
 def _match_choice(text: str, choices):
@@ -117,11 +136,30 @@ class RootOrchestrator:
             return "basic_info"
         if not p.arrival_time or not p.transport_suggestions:
             return "transport"
+        if not p.departure_time or not p.return_transport_suggestions:
+            return "transport"
         if not p.hotel_type or not p.food_preferences:
             return "hotel_food"
         if not has_itinerary:
             return "ready_to_plan"
         return "complete"
+
+    def _checkin_advice(self, mode: str, departure: str) -> str:
+        """'Smart' arrive-by advice for a chosen transport option: how much buffer
+        to leave before its departure time to comfortably complete check-in, per
+        realistic rules for that mode (flight/train/bus/ship)."""
+        mode = (mode or "").lower()
+        buffer_minutes = CHECKIN_BUFFER_MINUTES.get(mode)
+        place = CHECKIN_PLACE_LABELS.get(mode)
+        if not buffer_minutes or not place:
+            return ""
+        arrive_by = _subtract_minutes(departure, buffer_minutes)
+        if not arrive_by:
+            return ""
+        buffer_label = (f"{buffer_minutes // 60}h" if buffer_minutes % 60 == 0
+                         else f"{buffer_minutes} min")
+        return (f"Departure is at {departure}, so plan to reach {place} by **{arrive_by}** "
+                f"(about a {buffer_label} buffer for check-in).")
 
     def estimate_trip_cost(self, destination: str, days: int, hotel_type: str = None) -> int:
         """Rough per-day cost heuristic in INR, used as a fallback advisory budget check
@@ -135,7 +173,7 @@ class RootOrchestrator:
         (transport option + hotel tier) rather than a flat heuristic. Falls back to
         0 for any piece not yet chosen, so it's safe to call at any stage."""
         p = state.preferences
-        transport = p.transport_cost or 0
+        transport = (p.transport_cost or 0) + (p.return_transport_cost or 0)
         hotel_total = (p.hotel_cost_per_night or 0) * (p.days or 0)
         activities_buffer = DAILY_ACTIVITIES_BUFFER * (p.days or 0)
         grand_total = transport + hotel_total + activities_buffer
@@ -204,9 +242,15 @@ class RootOrchestrator:
             if not p.arrival_time:
                 state.active_agent = "Concierge"
                 response = self._handle_arrival_time(state, user_input)
-            else:
+            elif not p.transport_suggestions:
                 state.active_agent = "Transport Suggestions"
                 response = self._handle_transport_suggestions(state, user_input)
+            elif not p.departure_time:
+                state.active_agent = "Concierge"
+                response = self._handle_departure_time(state, user_input)
+            else:
+                state.active_agent = "Transport Suggestions"
+                response = self._handle_return_transport_suggestions(state, user_input)
         elif stage == "hotel_food":
             state.active_agent = "Concierge"
             if not p.hotel_type:
@@ -260,8 +304,9 @@ class RootOrchestrator:
             return ""
         estimate = self.budget_breakdown(state)["grand_total"]
         p.budget = estimate
+        total_transport = (p.transport_cost or 0) + (p.return_transport_cost or 0)
         return (f"Since you didn't have a fixed budget, here's an estimate based on your choices — "
-                f"transport ₹{p.transport_cost:,}, hotel ₹{p.hotel_cost_per_night:,}/night for "
+                f"transport ₹{total_transport:,} (round trip), hotel ₹{p.hotel_cost_per_night:,}/night for "
                 f"{p.days} nights, plus a rough allowance for food & activities: "
                 f"**≈₹{estimate:,} total**. I've set that as your working budget — just let me know "
                 f"if you'd like to adjust it.\n\n")
@@ -368,7 +413,85 @@ class RootOrchestrator:
                 "role": "user",
                 "content": f"[Selected transport: {option['mode'].title()} — ₹{option['price']:,}]"
             })
-        response = "Great choice! " + self._hotel_type_prompt()
+        advice = self._checkin_advice(option["mode"], option["departure"])
+        state.preferences.checkin_advice = advice
+        advice_note = f"\n\n🕐 {advice}" if advice else ""
+        response = "Great choice!" + advice_note + "\n\n" + self._departure_time_prompt(state)
+        state.preferences.planning_stage = self._current_stage(state.preferences, bool(state.itinerary_data))
+        state.messages.append({"role": "assistant", "content": response})
+        return response
+
+    def _departure_time_prompt(self, state: TravelState) -> str:
+        p = state.preferences
+        return (f"Now let's sort out your return journey. When would you like to depart "
+                f"{p.destination} to head back to {p.origin}? Choose one: **early morning, "
+                f"morning, afternoon, evening, late evening, or night.**")
+
+    def _handle_departure_time(self, state: TravelState, user_input: str) -> str:
+        matched = _match_choice(user_input, ARRIVAL_TIME_CHOICES)
+        if not matched:
+            # Fall back to the LLM extractor only if the keyword match missed —
+            # same reasoning as _handle_arrival_time.
+            self._extract_preferences(state, user_input)
+            if state.preferences.departure_time:
+                matched = _match_choice(state.preferences.departure_time, ARRIVAL_TIME_CHOICES)
+
+        if matched:
+            state.preferences.departure_time = matched
+            return self._handle_return_transport_suggestions(state, user_input)
+
+        return self._departure_time_prompt(state)
+
+    def _fetch_return_transport_options(self, state: TravelState) -> list:
+        try:
+            result = self.transport.run_return(state, "")
+            options = result.get("options") or []
+        except Exception:
+            options = []
+        if not options:
+            options = self.transport.get_mock_suggestions(
+                state.preferences.destination, state.preferences.origin, state.preferences.departure_time)
+        return options
+
+    def _return_transport_options_prompt(self, state: TravelState) -> str:
+        lines = [
+            f"- **{o['mode'].title()}**: ₹{o['price']:,}, {o['duration']} "
+            f"({o['departure']} → {o['arrival']}) — {o['why']}"
+            for o in state.transport_options
+        ]
+        return (f"Based on your **{state.preferences.departure_time.replace('_', ' ')}** departure "
+                f"preference, here's what I found for the return trip, {state.preferences.destination} → "
+                f"{state.preferences.origin}:\n\n" + "\n".join(lines) +
+                "\n\nPick one of the options above, or just tell me which one you'd like.")
+
+    def _handle_return_transport_suggestions(self, state: TravelState, user_input: str) -> str:
+        if state.transport_options:
+            matched = self._match_transport_option(state.transport_options, user_input)
+            if matched:
+                return self.select_return_transport_option(state, matched, record_message=False)
+            return self._return_transport_options_prompt(state)
+
+        state.transport_options = self._fetch_return_transport_options(state)
+        return self._return_transport_options_prompt(state)
+
+    def select_return_transport_option(self, state: TravelState, option: dict, record_message: bool = True) -> str:
+        """Called directly by the UI when the user clicks a return-transport option
+        card (or matched from typed text) — mirrors select_transport_option."""
+        state.preferences.return_transport_cost = option["price"]
+        state.preferences.return_transport_suggestions = (
+            f"{option['mode'].title()} — ₹{option['price']:,}, {option['duration']} "
+            f"({option['departure']} → {option['arrival']})")
+        state.transport_options = []
+
+        if record_message:
+            state.messages.append({
+                "role": "user",
+                "content": f"[Selected return transport: {option['mode'].title()} — ₹{option['price']:,}]"
+            })
+        advice = self._checkin_advice(option["mode"], option["departure"])
+        state.preferences.return_checkin_advice = advice
+        advice_note = f"\n\n🕐 {advice}" if advice else ""
+        response = "Return journey booked!" + advice_note + "\n\n" + self._hotel_type_prompt()
         state.preferences.planning_stage = self._current_stage(state.preferences, bool(state.itinerary_data))
         state.messages.append({"role": "assistant", "content": response})
         return response
@@ -461,6 +584,7 @@ class RootOrchestrator:
                 f"- **From:** {p.origin} → **To:** {p.destination}\n"
                 f"- **Days:** {p.days}  ·  **Budget:** {p.budget} INR\n"
                 f"- **Arrival:** {p.arrival_time.replace('_', ' ') if p.arrival_time else '—'}\n"
+                f"- **Return departure:** {p.departure_time.replace('_', ' ') if p.departure_time else '—'}\n"
                 f"- **Hotel:** {p.hotel_type.replace('_', ' ') if p.hotel_type else '—'}\n"
                 f"- **Food:** {', '.join(x.replace('_', ' ') for x in p.food_preferences) if p.food_preferences else '—'}"
                 f"{warning}\n\nShall I go ahead and build your itinerary now?")

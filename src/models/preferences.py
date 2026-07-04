@@ -17,6 +17,13 @@ class TravelPreferences(BaseModel):
     transport_modes: Optional[List[str]] = Field(default_factory=list, description="Preferred transport modes (flight, rail, bus, sea)")
     transport_suggestions: Optional[str] = Field(None, description="Transport suggestions summary text from search (price, duration, etc)")
     transport_cost: Optional[int] = Field(None, description="Price in INR of the selected transport option")
+    checkin_advice: Optional[str] = Field(None, description="Check-in buffer advice for the outbound transport (when to reach the airport/station/terminus)")
+
+    # Return journey & departure preferences
+    departure_time: Optional[str] = Field(None, description="Preferred departure time for the return journey (early_morning, morning, afternoon, evening, late_evening, night)")
+    return_transport_suggestions: Optional[str] = Field(None, description="Return transport suggestions summary text from search (price, duration, etc)")
+    return_transport_cost: Optional[int] = Field(None, description="Price in INR of the selected return transport option")
+    return_checkin_advice: Optional[str] = Field(None, description="Check-in buffer advice for the return transport (when to reach the airport/station/terminus)")
 
     # Hotel preferences
     hotel_type: Optional[str] = Field(None, description="Hotel preference (budget, mid_range, luxury, boutique)")

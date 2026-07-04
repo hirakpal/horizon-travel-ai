@@ -54,6 +54,31 @@ def test_run_makes_one_llm_call_per_day_and_guarantees_the_day_count():
     assert mock_llm.with_structured_output.return_value.invoke.call_count == 3
 
 
+def test_last_day_prompt_mentions_return_journey_and_checkin_buffer():
+    """Regression test: the last day's itinerary planning must account for the
+    traveler's actual return transport and departure time, so the model can
+    pace the day to leave enough buffer to get to the airport/station/terminus."""
+    agent = ItineraryArchitectAgent()
+    state = TravelState(session_id="test")
+    state.preferences.destination = "Goa"
+    state.preferences.days = 2
+    state.preferences.hotel_type = "mid_range"
+    state.preferences.departure_time = "evening"
+    state.preferences.return_transport_suggestions = "Flight — ₹6,000, 2h (06:00 PM → 08:00 PM)"
+
+    fake_days = [_fake_day(1, cost=500, crowd="moderate", transport="Walk"),
+                 _fake_day(2, cost=500, crowd="moderate", transport="Walk")]
+
+    with patch.object(agent, "llm") as mock_llm:
+        mock_llm.with_structured_output.return_value.invoke.side_effect = fake_days
+        agent.run(state, "build it")
+
+    last_day_prompt = mock_llm.with_structured_output.return_value.invoke.call_args_list[-1][0][0][1]["content"]
+    assert "return journey" in last_day_prompt.lower()
+    assert "evening" in last_day_prompt.lower()
+    assert "06:00 PM" in last_day_prompt
+
+
 def test_backfill_fills_missing_cost_crowd_and_transport():
     """Regression test for real-world observation: the LLM often omits cost,
     crowd, and transport on individual segments even when explicitly instructed

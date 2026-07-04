@@ -72,6 +72,12 @@ class ItineraryArchitectAgent(BaseAgent):
             )
         elif day_n == total_days:
             position_note = "This is the last day — keep the pace relaxed and account for departure logistics."
+            if p.return_transport_suggestions and p.departure_time:
+                position_note += (
+                    f" Return journey: {p.return_transport_suggestions}, matching the traveler's "
+                    f"{p.departure_time} departure preference — wind the day down with enough buffer "
+                    f"to get back to the hotel, collect luggage, and reach the departure point on time."
+                )
 
         places_note = self._places_note(candidates, used_names)
 
