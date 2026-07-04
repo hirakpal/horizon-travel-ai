@@ -315,6 +315,64 @@ consistently: (a) constrain the output with a real schema wherever possible,
 
 ---
 
+## Phase 2 — Grounding the Itinerary in Real Places (Google Maps Platform)
+
+Phase 1 made the itinerary *structurally* reliable (right day count, no blank
+fields, honest budget math) but its content — restaurant names, attraction
+names, distances — was still entirely the LLM's invention. Phase 2 wires in
+three Google Maps Platform APIs to replace invented content with real data,
+without weakening any of Phase 1's reliability guarantees.
+
+### 2.1 — Choosing a retrieval-then-generate pattern over generate-then-search
+The naive approach — generate the itinerary first, then search Google Places
+for each activity title afterward — was rejected: an LLM-invented title has no
+guarantee of matching anything real, so a post-hoc search would frequently
+come up empty or match the wrong place. Instead, Horizon fetches real
+candidate places **before** generation (a text search for top attractions, and
+a separate search for restaurants matching the stated food preference) and
+feeds that list into each day's prompt, asking the model to prefer those exact
+names. This is a lightweight, single-project instance of the same
+retrieval-augmented-generation idea used in larger RAG systems — retrieve
+first, generate grounded in what was retrieved.
+
+### 2.2 — Matching generated content back to real places
+Even when grounded, the model doesn't reliably echo a candidate's name
+character-for-character, and not every segment should be forced onto a real
+place (a "relax at the hotel pool" segment has no real-world match, and
+shouldn't get one). Used `difflib.SequenceMatcher` string similarity with a
+tuned threshold to match segment titles back to the candidate list — a
+confident match attaches real `place_id`/`address`/`rating`/coordinates/photo
+reference to that segment; no match leaves the segment exactly as the LLM
+wrote it. Candidate places already used are tracked across days and
+deprioritized in later days' prompts, so a 5-day trip doesn't keep suggesting
+the same three attractions.
+
+### 2.3 — Real distances only where they're actually knowable
+Once two consecutive segments are both grounded to real coordinates, the
+Routes API computes a real walking distance and duration between them,
+overwriting the LLM's guessed `walk` figure. Segments that weren't grounded
+keep their original (LLM-estimated) distance — the system never fabricates a
+"real" distance between two coordinates it doesn't actually have.
+
+### 2.4 — Security: the API key never reaches the browser
+Google's Places Photo and Street View endpoints are typically called with the
+key as a URL query parameter. Embedding that URL directly in an `<img src>`
+sent to the browser would expose a live API key in page source and the
+network tab of every visitor. Instead, images are fetched **server-side**
+(inside the Streamlit process) and the raw bytes are handed to `st.image()` —
+the browser only ever receives already-fetched image data, never a
+key-bearing URL.
+
+### 2.5 — Graceful degradation, again
+Consistent with every other external call in this project: no
+`GOOGLE_MAPS_API_KEY` configured means the entire grounding pipeline is a
+no-op (verified by a test asserting Google is never even called), and any
+failure partway through (search fails, a route can't be computed, a photo
+won't load) degrades to the Phase 1 behavior for that specific piece — never a
+crash, never a half-built itinerary.
+
+---
+
 ## GenAI Concepts — Coverage Snapshot
 
 | Concept | How it's covered in this project |
@@ -332,14 +390,35 @@ consistently: (a) constrain the output with a real schema wherever possible,
 | **Cost & latency optimization** | Extractor calls are skipped when a deterministic match already succeeds; LLM client has an explicit timeout/retry cap to avoid hangs |
 | **LLM evaluation & testing** | Three-layer test strategy — unit tests, mocked end-to-end conversation scenarios, and live-browser Playwright verification — since LLM output can't be asserted on directly, but the surrounding system's behavior can |
 | **Model/provider abstraction** | OpenRouter used as an OpenAI-compatible gateway, so the underlying model (`gpt-4o-mini`) can be swapped without touching agent code |
+| **Retrieval-then-generate grounding (RAG-lite)** | Real candidate places (Google Places API) are fetched *before* itinerary generation and threaded into the prompt, then fuzzy-matched back onto the model's output — real data grounds the generation instead of trying to verify it after the fact |
 
 ---
 
 ## Limitations
 
-- **No real-time data.** Transport prices, durations, and itinerary content are
-  LLM-estimated, not sourced from a live flights/hotels/activities API. Prices
-  shown are realistic approximations, not bookable quotes.
+- **Real-time data is partial, and optional.** With `GOOGLE_MAPS_API_KEY`
+  configured, attraction/restaurant names, ratings, addresses, and walking
+  distances can be grounded in real Google Places/Routes data — but transport
+  (flight/train/bus) prices and hotel costs are still entirely LLM-estimated,
+  not sourced from a live booking API, and without a Maps key the itinerary
+  falls back to fully LLM-invented content as in Phase 1.
+- **Place matching is approximate.** The fuzzy string match between a
+  generated segment title and a real candidate place is a similarity
+  heuristic (`difflib`), not a guarantee — a confident-looking but wrong match
+  is possible, and a real match can be missed if the model paraphrases the
+  name too much.
+- **Google Maps integration needs three separate APIs enabled** (Places API
+  (New), Routes API, Street View Static API) on the same Google Cloud
+  project/key, each with its own quota and billing; the app degrades
+  gracefully without any of them, but real-place features simply won't
+  activate.
+- **Street View has no "no imagery available" signal.** Google returns a
+  generic placeholder image (still HTTP 200) for locations without real
+  Street View coverage — the app can't reliably detect and hide this case.
+- **LLM instruction-following is not 100% reliable.** Even with schema
+  enforcement, the model can produce lower-quality content (generic
+  descriptions, occasional field omissions) that the deterministic backfill
+  can mask structurally but not fully improve qualitatively.
 - **LLM instruction-following is not 100% reliable.** Even with schema
   enforcement, the model can produce lower-quality content (generic
   descriptions, occasional field omissions) that the deterministic backfill
