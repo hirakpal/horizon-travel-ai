@@ -10,22 +10,35 @@ st.markdown("""
 <style>
     .main-header { font-family: 'Playfair Display', serif; color: #FF6B6B; text-align: center; }
     .hero { border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
-    .destination-card { 
-        background: #1e2937; border-radius: 20px; padding: 0; 
-        box-shadow: 0 10px 30px rgba(0,0,0,0.3); overflow: hidden;
-        transition: all 0.4s ease;
-    }
-    .destination-card:hover { transform: translateY(-10px); box-shadow: 0 20px 40px rgba(255,107,107,0.3); }
-    .card-image { height: 240px; object-fit: cover; width: 100%; }
-    .card-content { padding: 20px; }
+    .nav-button { background: linear-gradient(90deg, #FF6B6B, #FFB800); color: white; border: none; padding: 14px 24px; border-radius: 50px; font-weight: bold; margin: 8px; }
 </style>
 """, unsafe_allow_html=True)
+
+# Navigation using session state
+if "current_page" not in st.session_state:
+    st.session_state.current_page = "Home"
+
+def set_page(p):
+    st.session_state.current_page = p
+    st.rerun()
 
 with st.sidebar:
     st.image("https://via.placeholder.com/180x180/FF6B6B/FFFFFF?text=🌊", width=150)
     st.title("Horizon")
     st.caption("Your Intelligent Travel Companion")
-    page = st.radio("Navigate", ["Home", "Chat", "Itinerary", "Travel DNA", "Explore"])
+    
+    if st.button("🏠 Home", use_container_width=True):
+        set_page("Home")
+    if st.button("💬 Chat", use_container_width=True):
+        set_page("Chat")
+    if st.button("🗺️ Itinerary", use_container_width=True):
+        set_page("Itinerary")
+    if st.button("🧬 Travel DNA", use_container_width=True):
+        set_page("Travel DNA")
+    if st.button("✨ Explore", use_container_width=True):
+        set_page("Explore")
+
+page = st.session_state.current_page
 
 def generate_mock_itinerary(dest="Kyoto"):
     return [
@@ -42,16 +55,16 @@ if page == "Home":
     col1, col2, col3, col4 = st.columns(4)
     with col1:
         if st.button("💬 Chat with Horizon", use_container_width=True):
-            st.switch_page("Chat")
+            set_page("Chat")
     with col2:
         if st.button("✨ Browse Destinations", use_container_width=True):
-            st.switch_page("Explore")
+            set_page("Explore")
     with col3:
         if st.button("🗺️ My Itinerary", use_container_width=True):
-            st.switch_page("Itinerary")
+            set_page("Itinerary")
     with col4:
-        if st.button("🧬 Travel DNA", use_container_width=True):
-            st.switch_page("Travel DNA")
+        if st.button("🧬 My Travel DNA", use_container_width=True):
+            set_page("Travel DNA")
 
 elif page == "Chat":
     st.title("💬 Chat with Horizon")
@@ -102,10 +115,10 @@ elif page == "Explore":
         ("Santorini, Greece", "Experience breathtaking cliffside views, dramatic sunsets, and charming white-washed villages.", "91%", "https://picsum.photos/id/102/600/280"),
         ("Swiss Alps, Switzerland", "Journey through majestic mountains and scenic trains in this alpine paradise.", "85%", "https://picsum.photos/id/103/600/280"),
         ("Marrakech, Morocco", "Wander bustling souks, experience vibrant markets, and traditional riad hospitality.", "79%", "https://picsum.photos/id/104/600/280"),
-        ("Banff, Canada", "Explore turquoise lakes, towering peaks, and abundant wildlife.", "82%", "https://picsum.photos/id/105/600/280"),
-        ("Barcelona, Spain", "Admire Gaudí’s masterpieces, enjoy Mediterranean beaches and tapas culture.", "87%", "https://picsum.photos/id/106/600/280"),
+        ("Banff, Canada", "Explore turquoise glacial lakes, towering peaks, and abundant wildlife.", "82%", "https://picsum.photos/id/105/600/280"),
+        ("Barcelona, Spain", "Admire Gaudí’s architectural wonders, relax on Mediterranean beaches, and savor tapas culture.", "87%", "https://picsum.photos/id/106/600/280"),
         ("Queenstown, New Zealand", "Dive into adventure with bungee jumping and stunning fjord landscapes.", "76%", "https://picsum.photos/id/107/600/280"),
-        ("Dubai, UAE", "Marvel at futuristic architecture, luxury, and desert adventures.", "81%", "https://picsum.photos/id/108/600/280")
+        ("Dubai, UAE", "Marvel at futuristic skyscrapers, enjoy luxury shopping, desert safaris, and world-class entertainment.", "81%", "https://picsum.photos/id/108/600/280")
     ]
     
     cols = st.columns(2)
@@ -123,6 +136,8 @@ elif page == "Explore":
             """, unsafe_allow_html=True)
             
             if st.button(f"🌟 Plan Trip to {name.split(',')[0]}", key=f"plan_{i}"):
-                st.success(f"Creating personalized itinerary for **{name}**...")
+                st.session_state.current_destination = name
+                st.session_state.current_page = "Itinerary"
+                st.rerun()
 
 st.caption("Horizon Travel AI • Capstone Demo")
