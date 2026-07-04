@@ -476,6 +476,27 @@ def evidence_block(score: int, evidence: list, note: str | None, key: str):
                         unsafe_allow_html=True)
 
 
+@st.cache_data(show_spinner=False, ttl=3600)
+def cached_place_photo(photo_name: str, api_key: str):
+    """Fetched server-side and cached by Streamlit — the API key never reaches
+    the browser, and repeat renders (Streamlit reruns the whole script on every
+    interaction) don't re-hit the Google API for the same photo."""
+    from src.tools import google_maps
+    try:
+        return google_maps.fetch_place_photo(photo_name, api_key)
+    except Exception:
+        return None
+
+
+@st.cache_data(show_spinner=False, ttl=3600)
+def cached_street_view(lat: float, lng: float, api_key: str):
+    from src.tools import google_maps
+    try:
+        return google_maps.fetch_street_view_image(lat, lng, api_key)
+    except Exception:
+        return None
+
+
 def segment_card(s: dict, currency: str, key: str):
     chips = []
     if s["walk"]:
@@ -488,14 +509,21 @@ def segment_card(s: dict, currency: str, key: str):
         chips.append(f'<span class="hz-chip">{icon} {s["crowd"]} crowd</span>')
     if s["transport"]:
         chips.append(f'<span class="hz-chip">→ next: <b>{html.escape(s["transport"])}</b></span>')
+    if s.get("rating"):
+        chips.append(f'<span class="hz-chip">⭐ <b>{s["rating"]}</b> Google</span>')
+    address_line = (f'<div class="hz-body" style="font-size:.8rem;color:{FAINT}">'
+                     f'📍 {html.escape(s["address"])}</div>' if s.get("address") else "")
     st.markdown(
         f"""<div class="hz-card">
               <div class="hz-kicker"><span class="hz-time">{s['time']}</span>
                 &nbsp;·&nbsp;{s['dur']} min</div>
               <div class="hz-title">{s['icon']} {html.escape(s['title'])}</div>
               <div class="hz-body">{html.escape(s['desc'])}</div>
+              {address_line}
               <div class="hz-meta">{''.join(chips)}</div>
             </div>""", unsafe_allow_html=True)
+    if s.get("image_bytes"):
+        st.image(s["image_bytes"], width="stretch")
     evidence_block(s["conf"], s["evidence"], s["note"], key)
     if s["alt"]:
         with st.expander("Alternative"):
@@ -893,6 +921,13 @@ elif page == "Itinerary":
             st.warning(f"⚠️ This plan is approximately ₹{grand_total - budget:,} over your stated budget.")
         rule()
 
+        # Real place photo / Street View imagery — only attempted when a Google
+        # Maps key is configured and a segment was actually grounded to a real
+        # place (has a photo_name or coordinates). Cached per photo/coordinate so
+        # a Streamlit rerun (triggered by any click anywhere) doesn't re-hit the
+        # Google API for images already fetched this session.
+        google_api_key = os.environ.get("GOOGLE_MAPS_API_KEY")
+
         # Render Day Cards
         for day in days:
             day_total = sum((seg.get("cost") or 0) for seg in day.get("segments", []))
@@ -905,6 +940,14 @@ elif page == "Itinerary":
             for i, seg in enumerate(day.get("segments", [])):
                 evidence = seg.get("evidence") or [("pref", "Based on your preferences")]
                 alt = seg.get("alt")
+
+                image_bytes = None
+                if google_api_key:
+                    if seg.get("photo_name"):
+                        image_bytes = cached_place_photo(seg["photo_name"], google_api_key)
+                    elif seg.get("lat") is not None and seg.get("lng") is not None:
+                        image_bytes = cached_street_view(seg["lat"], seg["lng"], google_api_key)
+
                 segment_card({
                     "time": seg.get("time", "—"),
                     "dur": seg.get("dur", 60),
@@ -919,6 +962,9 @@ elif page == "Itinerary":
                     "crowd": seg.get("crowd"),
                     "note": seg.get("note"),
                     "alt": tuple(alt) if alt else None,
+                    "rating": seg.get("rating"),
+                    "address": seg.get("address"),
+                    "image_bytes": image_bytes,
                 }, "₹", key=f"d{day.get('n', 0)}s{i}")
 
 

@@ -11,3 +11,4 @@ langchain-anthropic
 pydantic
 python-dotenv
 langchain-openai
+requests
