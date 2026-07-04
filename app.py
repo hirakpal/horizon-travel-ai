@@ -707,9 +707,17 @@ elif page == "Chat":
     from src.orchestrator import RootOrchestrator
     from src.models.state import TravelState
 
-    st.markdown("## 💬 Chat with Horizon")
-    st.markdown('<p style="color:#94A3B8;margin-top:-.4rem">Describe the trip in your own '
-                "words. Horizon uses multi-agent orchestration to plan your trip.</p>", unsafe_allow_html=True)
+    head_col, replan_col = st.columns([4, 1])
+    with head_col:
+        st.markdown("## 💬 Chat with Horizon")
+        st.markdown('<p style="color:#94A3B8;margin-top:-.4rem">Describe the trip in your own '
+                    "words. Horizon uses multi-agent orchestration to plan your trip.</p>", unsafe_allow_html=True)
+    with replan_col:
+        st.write("")
+        if st.button("🔄 Replan trip", width="stretch",
+                     help="Clear this conversation and start planning a new trip from scratch"):
+            st.session_state.travel_state = TravelState(session_id="hirak_001")
+            st.rerun()
     rule()
 
     # Initialize backend in session state
@@ -719,6 +727,20 @@ elif page == "Chat":
         st.session_state.travel_state = TravelState(session_id="hirak_001")
 
     state = st.session_state.travel_state
+
+    stage_labels = {
+        "basic_info": "Gathering trip basics",
+        "transport": "Arrival time & transport options",
+        "hotel_food": "Hotel & food preferences",
+        "ready_to_plan": "Awaiting your go-ahead",
+        "planning": "Building itinerary…",
+        "complete": "Itinerary ready",
+    }
+    current_stage = state.preferences.planning_stage
+    st.markdown(
+        f'<span class="hz-chip">📍 <b>{stage_labels.get(current_stage, current_stage)}</b></span>',
+        unsafe_allow_html=True)
+    st.write("")
 
     # Display chat history
     for msg in state.messages:
