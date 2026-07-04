@@ -25,6 +25,28 @@ def test_orchestration_loop():
     assert state.active_agent == "Concierge"
 
 
+def test_budget_without_destination_asks_for_destination_not_dead_end_menu():
+    """Regression test: ConciergeAgent used to show a 'pick an experience tier' menu
+    whenever budget was set but destination wasn't, with no code anywhere to process
+    the user's reply to it — every subsequent turn re-triggered the same menu,
+    producing an infinite loop the user could never escape (observed when the
+    extractor captured budget from a message but missed the destination in it)."""
+    orchestrator = _orchestrator()
+    state = TravelState(session_id="test")
+    state.preferences.budget = 15000
+
+    with patch.object(orchestrator.extractor, "run", return_value={"updated_preferences": None}), \
+         patch.object(orchestrator.concierge, "llm") as mock_llm:
+        # Exercise the real ConciergeAgent.run() logic (not a mocked reply) so this
+        # test actually fails if the dead-end tier-menu branch comes back.
+        mock_llm.invoke.return_value.content = "Could you tell me your destination?"
+        response = orchestrator.process_turn(state, "Comfort explorer")
+
+    assert "experience tier" not in response.lower()
+    assert "budget backpacker" not in response.lower()
+    mock_llm.invoke.assert_called_once()
+
+
 def test_missing_basic_info_prompts_for_it():
     orchestrator = _orchestrator()
     state = TravelState(session_id="test")
