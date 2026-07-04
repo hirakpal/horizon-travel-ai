@@ -688,113 +688,43 @@ if page == "Home":
 
 
 # ============================================================================
-# CHAT — proactive clarification flow (PRD §2.1)
+# CHAT — Wired to RootOrchestrator backend
 # ============================================================================
 elif page == "Chat":
+    from src.orchestrator import RootOrchestrator
+    from src.models.state import TravelState
+
     st.markdown("## 💬 Chat with Horizon")
     st.markdown('<p style="color:#94A3B8;margin-top:-.4rem">Describe the trip in your own '
-                "words. Horizon asks targeted questions when critical details are missing — "
-                "it never guesses your budget.</p>", unsafe_allow_html=True)
+                "words. Horizon uses multi-agent orchestration to plan your trip.</p>", unsafe_allow_html=True)
     rule()
 
-    if "messages" not in st.session_state:
-        st.session_state.messages = [{
-            "role": "assistant",
-            "content": "Hi Hirak! Where are we going? A vibe, a city, a month — whatever "
-                       "you have. I'll ask for anything I'm missing.",
-        }]
-    if "prefs" not in st.session_state:
-        st.session_state.prefs = {"budget": None, "days": None, "month": None, "from": None}
+    # Initialize backend in session state
+    if "orchestrator" not in st.session_state:
+        st.session_state.orchestrator = RootOrchestrator()
+    if "travel_state" not in st.session_state:
+        st.session_state.travel_state = TravelState(session_id="hirak_001")
 
-    prefs = st.session_state.prefs
-    MONTHS = ["january", "february", "march", "april", "may", "june", "july",
-              "august", "september", "october", "november", "december"]
+    state = st.session_state.travel_state
 
-    def assistant_reply(text: str) -> dict:
-        t = text.lower()
-        for m in MONTHS:
-            if m in t:
-                prefs["month"] = m.capitalize()
-        if "osaka" in t:
-            prefs["from"] = "Osaka"
-        if "delhi" in t:
-            prefs["from"] = "Delhi"
-        if "mumbai" in t:
-            prefs["from"] = "Mumbai"
-        if " from " in f" {t} " and prefs["from"] is None:
-            prefs["from"] = t.split("from")[-1].strip().split()[0].capitalize()
-        for dest in ITINERARIES:
-            if dest.split(",")[0].lower() in t:
-                st.session_state.current_destination = dest
-        for tok in t.replace(",", " ").split():
-            clean = tok.rstrip("k")
-            if clean.isdigit():
-                n = int(clean)
-                if tok.endswith("k"):
-                    n *= 1000
-                if 1 <= n <= 21 and prefs["days"] is None:
-                    prefs["days"] = n
-                elif n >= 5000 and prefs["budget"] is None:
-                    prefs["budget"] = n
-
-        nice = {"budget": "a rough total budget", "days": "how many days you have",
-                "month": "which month you're travelling", "from": "where you're starting from"}
-        missing = [k for k, v in prefs.items() if v is None]
-        if missing:
-            parts = [nice[m] for m in missing]
-            joined = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
-            return {"role": "assistant",
-                    "content": f"Got it — I can start sketching, but before I build the full "
-                               f"plan I need {joined}. Two of these change the itinerary shape "
-                               f"completely, so I'd rather ask than guess.",
-                    "options": ["3 days · ₹95k · November · from Osaka",
-                                "5 days · flexible budget · April from Delhi",
-                                "Let me type it out"]}
-
-        dest = st.session_state.current_destination
-        it = get_itinerary(dest)
-        return {"role": "assistant",
-                "content": f"Done — a {len(it['days'])}-day **{dest}** plan built around "
-                           f"your DNA profile. Overall confidence **{it['overall'][0]}%** — "
-                           f"open the **Itinerary** page for the day-by-day, or tell me "
-                           f"what to change.",
-                "conf": it["overall"]}
-
-    def push_user(text: str):
-        st.session_state.messages.append({"role": "user", "content": text})
-        st.session_state.messages.append(assistant_reply(text))
-
-    # slot tracker
-    labels = {"budget": "Budget", "days": "Days", "month": "Month", "from": "From"}
-    chips = "".join(
-        f'<span class="hz-chip">{labels[k]}: <b>{"₹{:,}".format(v) if k == "budget" else v}</b></span>'
-        if v else f'<span class="hz-chip" style="opacity:.45">{labels[k]}: ?</span>'
-        for k, v in prefs.items())
-    st.markdown(f'<div class="hz-meta" style="margin-bottom:1rem">{chips}</div>',
-                unsafe_allow_html=True)
-
-    for i, msg in enumerate(st.session_state.messages):
+    # Display chat history
+    for msg in state.messages:
         with st.chat_message(msg["role"], avatar="🧭" if msg["role"] == "assistant" else None):
             st.markdown(msg["content"])
-            if msg.get("conf"):
-                evidence_block(*msg["conf"], key=f"chat-{i}")
-            if msg.get("options") and i == len(st.session_state.messages) - 1:
-                cols = st.columns(len(msg["options"]))
-                for j, (col, opt) in enumerate(zip(cols, msg["options"])):
-                    with col:
-                        if st.button(opt, key=f"opt-{i}-{j}", width="stretch"):
-                            if opt.startswith("3 days"):
-                                push_user("3 days, 95000 budget, November, from Osaka")
-                                st.rerun()
-                            elif opt.startswith("5 days"):
-                                push_user("5 days in April from Delhi, budget 120000")
-                                st.rerun()
 
+    # Handle user input
     if prompt := st.chat_input("e.g. “Kyoto in November — we love food and temples”"):
-        push_user(prompt)
+        with st.chat_message("user"):
+            st.markdown(prompt)
+        
+        with st.spinner("Horizon is thinking..."):
+            # Call the Root Orchestrator
+            response = st.session_state.orchestrator.process_turn(state, prompt)
+            
+        with st.chat_message("assistant", avatar="🧭"):
+            st.markdown(response)
+        
         st.rerun()
-
-
 # ============================================================================
 # ITINERARY — destination-aware, rich cards, one-click PDF
 # ============================================================================
