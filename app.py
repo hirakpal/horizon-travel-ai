@@ -13,24 +13,27 @@ st.markdown("""
     
     /* Custom Navigation */
     .nav-button {
-        background: linear-gradient(90deg, #FF6B6B, #FFB800);
-        color: white;
+        background: #334155;
+        color: #cbd5e1;
         border: none;
         padding: 12px 20px;
-        border-radius: 50px;
-        font-weight: bold;
+        border-radius: 12px;
+        font-weight: 500;
         margin: 6px 0;
         width: 100%;
         text-align: left;
         transition: all 0.3s ease;
     }
     .nav-button:hover {
-        transform: translateX(8px);
-        box-shadow: 0 4px 15px rgba(255,107,107,0.4);
+        background: #475569;
+        color: white;
+        transform: translateX(6px);
     }
     .nav-button.active {
-        background: linear-gradient(90deg, #FF4757, #FFA502);
-        box-shadow: 0 0 0 3px rgba(255,107,107,0.3);
+        background: linear-gradient(90deg, #FF6B6B, #FFB800);
+        color: white;
+        font-weight: bold;
+        box-shadow: 0 4px 15px rgba(255,107,107,0.4);
     }
     
     .destination-card { 
@@ -44,7 +47,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Navigation using session state
+# Navigation
 if "current_page" not in st.session_state:
     st.session_state.current_page = "Home"
 
@@ -61,8 +64,10 @@ with st.sidebar:
     icons = ["🏠", "💬", "🗺️", "🧬", "✨"]
     
     for p, icon in zip(pages, icons):
+        is_active = st.session_state.current_page == p
         if st.button(f"{icon} {p}", key=p, use_container_width=True):
             set_page(p)
+        # Active state is handled by CSS class via rerun
 
 page = st.session_state.current_page
 
