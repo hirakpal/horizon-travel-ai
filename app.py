@@ -704,8 +704,20 @@ if page == "Home":
 # CHAT — Wired to RootOrchestrator backend
 # ============================================================================
 elif page == "Chat":
-    from src.orchestrator import RootOrchestrator
+    from src.orchestrator import RootOrchestrator, HOTEL_NIGHTLY_RATES
     from src.models.state import TravelState
+
+    TRANSPORT_MODE_ICONS = {"flight": "✈️", "train": "🚆", "bus": "🚌", "ship": "🚢"}
+    HOTEL_TIER_CARDS = [
+        ("budget", "💰", "Budget", "Hostels & simple stays"),
+        ("mid_range", "🏨", "Mid-range", "3-star comfort"),
+        ("luxury", "✨", "Luxury", "5-star resorts"),
+        ("boutique", "🎨", "Boutique", "Unique, design-forward stays"),
+    ]
+    FOOD_PREF_LABELS = {
+        "vegetarian": "🥗 Vegetarian", "vegan": "🌱 Vegan",
+        "non_veg": "🍗 Non-vegetarian", "no_restrictions": "🍽️ No restrictions",
+    }
 
     head_col, replan_col = st.columns([4, 1])
     with head_col:
@@ -747,6 +759,80 @@ elif page == "Chat":
         with st.chat_message(msg["role"], avatar="🧭" if msg["role"] == "assistant" else None):
             st.markdown(msg["content"])
 
+    orchestrator = st.session_state.orchestrator
+
+    # --- Interactive transport option cards ---
+    if current_stage == "transport" and state.preferences.arrival_time and state.transport_options:
+        st.markdown("#### ✈️ Choose your transport")
+        cols = st.columns(len(state.transport_options))
+        for col, option in zip(cols, state.transport_options):
+            with col:
+                icon = TRANSPORT_MODE_ICONS.get(option["mode"].lower(), "📍")
+                st.markdown(
+                    f"""<div class="hz-card">
+                          <div class="hz-title">{icon} {html.escape(option['mode'].title())}</div>
+                          <div class="hz-body">₹{option['price']:,} · {html.escape(option['duration'])}<br>
+                          {html.escape(option['departure'])} → {html.escape(option['arrival'])}</div>
+                          <div class="hz-body" style="font-size:.8rem;color:#64748B">
+                          {html.escape(option['why'])}</div>
+                        </div>""", unsafe_allow_html=True)
+                if st.button(f"Select {option['mode'].title()}",
+                             key=f"transport_{option['mode']}_{option['price']}", width="stretch"):
+                    orchestrator.select_transport_option(state, option)
+                    st.rerun()
+        st.caption("Or just type which one you'd like below.")
+
+    # --- Interactive hotel tier cards ---
+    elif current_stage == "hotel_food" and not state.preferences.hotel_type:
+        st.markdown("#### 🏨 Choose your hotel tier")
+        days = state.preferences.days or 1
+        cols = st.columns(4)
+        for col, (tier, icon, label, desc) in zip(cols, HOTEL_TIER_CARDS):
+            rate = HOTEL_NIGHTLY_RATES.get(tier, 4000)
+            with col:
+                st.markdown(
+                    f"""<div class="hz-card">
+                          <div class="hz-title">{icon} {label}</div>
+                          <div class="hz-body">{desc}<br>~₹{rate:,}/night<br>
+                          <b>₹{rate * days:,}</b> for {days} nights</div>
+                        </div>""", unsafe_allow_html=True)
+                if st.button(f"Select {label}", key=f"hotel_{tier}", width="stretch"):
+                    orchestrator.select_hotel_tier(state, tier)
+                    st.rerun()
+        st.caption("Or just type your preference below.")
+
+    # --- Interactive food preference chips ---
+    elif current_stage == "hotel_food" and state.preferences.hotel_type and not state.preferences.food_preferences:
+        st.markdown("#### 🍽️ Food preferences")
+        selected = st.multiselect(
+            "Pick one or more", options=list(FOOD_PREF_LABELS.keys()),
+            format_func=lambda k: FOOD_PREF_LABELS[k], key="food_pref_select")
+        if st.button("Continue", disabled=not selected, width="stretch", type="primary"):
+            orchestrator.select_food_preferences(state, selected)
+            st.rerun()
+        st.caption("Or just type your preference below.")
+
+    # --- Ready to build ---
+    elif current_stage == "ready_to_plan" and not state.itinerary_data:
+        if st.button("🚀 Build my itinerary", width="stretch", type="primary"):
+            with st.spinner("Building your itinerary..."):
+                orchestrator.process_turn(state, "yes")
+            st.rerun()
+        st.caption("Or tell me in the chat if you'd like to change anything first.")
+
+    # --- Live running budget, once real transport/hotel numbers are known ---
+    if state.preferences.transport_cost is not None or state.preferences.hotel_cost_per_night is not None:
+        bd = orchestrator.budget_breakdown(state)
+        badge_color = "#F87171" if bd["over_budget"] else "#5EEAD4"
+        over_note = (f" ⚠️ over your ₹{bd['budget']:,} budget" if bd["over_budget"] else "")
+        st.markdown(
+            f"""<div class="hz-card" style="border-color:{badge_color}55">
+                  <div class="hz-kicker">running budget estimate</div>
+                  <div class="hz-body">Transport ₹{bd['transport']:,} · Hotel ₹{bd['hotel_total']:,} ·
+                  Activities (est.) ₹{bd['activities_buffer']:,}</div>
+                  <div class="hz-title" style="color:{badge_color}">Total ≈ ₹{bd['grand_total']:,}{over_note}</div>
+                </div>""", unsafe_allow_html=True)
+
     # Handle user input
     if prompt := st.chat_input("e.g. “Kyoto in November — we love food and temples”"):
         with st.chat_message("user"):
@@ -779,12 +865,18 @@ elif page == "Itinerary":
         # Hotel + transport aren't part of the LLM-authored day-by-day segments, so they're
         # estimated deterministically here rather than depending on the model to account for
         # them — otherwise "Total Estimated Spend" silently excludes two of the biggest
-        # trip costs and looks far cheaper than the trip will actually be.
+        # trip costs and looks far cheaper than the trip will actually be. Prefer the
+        # traveler's actual selected transport price + hotel tier when available (set via
+        # the Chat page's interactive cards or matched text), falling back to the flat
+        # per-day heuristic only if those were never captured.
         orchestrator = st.session_state.get("orchestrator")
-        hotel_transport_estimate = (
-            orchestrator.estimate_trip_cost(ts.preferences.destination, ts.preferences.days,
-                                             ts.preferences.hotel_type)
-            if orchestrator else 0)
+        p = ts.preferences
+        if orchestrator and p.transport_cost is not None and p.hotel_cost_per_night is not None:
+            hotel_transport_estimate = p.transport_cost + p.hotel_cost_per_night * (p.days or 0)
+        elif orchestrator:
+            hotel_transport_estimate = orchestrator.estimate_trip_cost(p.destination, p.days, p.hotel_type)
+        else:
+            hotel_transport_estimate = 0
         grand_total = activities_total + hotel_transport_estimate
         budget = ts.preferences.budget
 
