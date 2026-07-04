@@ -345,6 +345,83 @@ def test_select_hotel_tier_sets_nightly_rate_and_advances_to_food_prompt():
     assert "food" in response.lower()
 
 
+def test_typed_no_hotel_phrasing_is_recognized_and_budgets_zero():
+    """Regression test: a user who says they don't need a hotel (staying with
+    family, already booked elsewhere, etc.) used to get stuck being re-asked
+    the hotel question forever, because HOTEL_TYPE_CHOICES had no entry for
+    "no hotel" and the LLM extractor's free-form guess (if any) never matched
+    the deterministic choices either."""
+    orchestrator = _orchestrator()
+    state = TravelState(session_id="test")
+    state.preferences.origin = "Kolkata"
+    state.preferences.destination = "Patna"
+    state.preferences.days = 5
+    state.preferences.budget = 50000
+    state.preferences.arrival_time = "morning"
+    state.preferences.transport_suggestions = "Train — ₹800"
+    state.preferences.departure_time = "evening"
+    state.preferences.return_transport_suggestions = "Train — ₹800"
+
+    with _no_op_extractor(orchestrator):
+        response = orchestrator.process_turn(state, "I don't need a hotel, staying with family")
+
+    assert state.preferences.hotel_type == "no_hotel"
+    assert state.preferences.hotel_cost_per_night == 0
+    assert "food" in response.lower()
+    assert "hotel" not in response.lower() or "no hotel" in response.lower()
+
+
+def test_no_hotel_phrasing_variety_including_the_exact_reported_wording():
+    """Regression test for a live production report: the user typed 'i dont
+    need hotel in Kolkata in return' (no "a"/"any" article) and got endlessly
+    re-asked the hotel question, because the original keyword list only
+    matched phrasings with an article ("dont need a hotel")."""
+    phrasings = [
+        "i dont need hotel in Kolkata in return",  # exact reported phrasing
+        "I don't need a hotel",
+        "we won't need hotel this time",
+        "no need for hotel, staying with relatives",
+        "no need of a hotel",
+        "don't require hotel",
+    ]
+    for phrase in phrasings:
+        orchestrator = _orchestrator()
+        state = TravelState(session_id="test")
+        state.preferences.origin = "Kolkata"
+        state.preferences.destination = "Patna"
+        state.preferences.days = 5
+        state.preferences.budget = 50000
+        state.preferences.arrival_time = "morning"
+        state.preferences.transport_suggestions = "Train — ₹800"
+        state.preferences.departure_time = "evening"
+        state.preferences.return_transport_suggestions = "Train — ₹800"
+
+        with _no_op_extractor(orchestrator):
+            response = orchestrator.process_turn(state, phrase)
+
+        assert state.preferences.hotel_type == "no_hotel", f"failed for phrasing: {phrase!r}"
+        assert state.preferences.hotel_cost_per_night == 0, f"failed for phrasing: {phrase!r}"
+        assert "food" in response.lower(), f"failed for phrasing: {phrase!r}"
+
+
+def test_select_hotel_tier_no_hotel_sets_zero_cost_and_correct_budget():
+    orchestrator = _orchestrator()
+    state = TravelState(session_id="test")
+    state.preferences.days = 5
+    state.preferences.budget = 50000
+    state.preferences.transport_cost = 800
+    state.preferences.return_transport_cost = 800
+
+    response = orchestrator.select_hotel_tier(state, "no_hotel")
+
+    assert state.preferences.hotel_type == "no_hotel"
+    assert state.preferences.hotel_cost_per_night == 0
+    assert "no hotel needed" in response.lower()
+    breakdown = orchestrator.budget_breakdown(state)
+    assert breakdown["hotel_total"] == 0
+    assert breakdown["grand_total"] == 800 + 800 + 800 * 5
+
+
 def test_select_food_preferences_advances_to_ready_to_plan_summary():
     orchestrator = _orchestrator()
     state = TravelState(session_id="test")

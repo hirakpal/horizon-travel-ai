@@ -79,6 +79,33 @@ def test_last_day_prompt_mentions_return_journey_and_checkin_buffer():
     assert "06:00 PM" in last_day_prompt
 
 
+def test_last_day_prompt_and_backfill_adapt_when_no_hotel_booked():
+    """Regression test: when the traveler said they don't need a hotel, the last
+    day's plan shouldn't tell them to head back to a hotel that doesn't exist —
+    neither in the LLM prompt's framing nor in the deterministic backfill
+    default for a segment the model left blank."""
+    agent = ItineraryArchitectAgent()
+    state = TravelState(session_id="test")
+    state.preferences.destination = "Patna"
+    state.preferences.days = 2
+    state.preferences.hotel_type = "no_hotel"
+    state.preferences.departure_time = "evening"
+    state.preferences.return_transport_suggestions = "Train — ₹800, 7h (05:00 PM → 12:30 AM)"
+
+    fake_days = [_fake_day(1, cost=500, crowd="moderate", transport="Walk"),
+                 _fake_day(2, cost=None, crowd=None, transport=None)]
+
+    with patch.object(agent, "llm") as mock_llm:
+        mock_llm.with_structured_output.return_value.invoke.side_effect = fake_days
+        result = agent.run(state, "build it")
+
+    last_day_prompt = mock_llm.with_structured_output.return_value.invoke.call_args_list[-1][0][0][1]["content"]
+    assert "no hotel booked" in last_day_prompt.lower()
+
+    last_segment = result["itinerary"]["itinerary"][1]["segments"][-1]
+    assert last_segment["transport"] != "Return to hotel"
+
+
 def test_backfill_fills_missing_cost_crowd_and_transport():
     """Regression test for real-world observation: the LLM often omits cost,
     crowd, and transport on individual segments even when explicitly instructed
