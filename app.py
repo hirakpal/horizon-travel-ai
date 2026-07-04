@@ -702,7 +702,7 @@ elif page == "Chat":
         )
     
     if "extractor_agent" not in st.session_state:
-        st.session_state.extractor_agent = PreferenceExtractorAgent(st.session_state.openai_client)
+    st.session_state.extractor_agent = PreferenceExtractorAgent()
 
     st.markdown("## 💬 Chat with Horizon")
     st.markdown('<p style="color:#94A3B8;margin-top:-.4rem">Describe the trip in your own '
