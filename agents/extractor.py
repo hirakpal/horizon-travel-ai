@@ -28,7 +28,7 @@ class PreferenceExtractorAgent:
         Initializes the agent with an OpenAI client instance.
         """
         self.client = llm_client
-        self.model = "gpt-4o"
+        self.model = "gpt-5.5"
 
     def extract(self, user_message: str, current_prefs: Dict[str, Any]) -> Dict[str, Any]:
         """
