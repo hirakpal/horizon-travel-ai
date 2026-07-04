@@ -14,10 +14,12 @@ class TravelPreferences(BaseModel):
     arrival_time: Optional[str] = Field(None, description="Preferred arrival time (early_morning, morning, afternoon, evening, late_evening, night)")
     transport_modes: Optional[List[str]] = Field(default_factory=list, description="Preferred transport modes (flight, rail, bus, sea)")
     transport_suggestions: Optional[str] = Field(None, description="Transport suggestions summary text from search (price, duration, etc)")
-    
+    transport_cost: Optional[int] = Field(None, description="Price in INR of the selected transport option")
+
     # Hotel preferences
     hotel_type: Optional[str] = Field(None, description="Hotel preference (budget, mid_range, luxury, boutique)")
-    
+    hotel_cost_per_night: Optional[int] = Field(None, description="Per-night cost in INR of the selected hotel tier")
+
     # Food preferences
     food_preferences: Optional[List[str]] = Field(default_factory=list, description="Food preferences (vegetarian, vegan, non_veg, no_restrictions)")
     cuisine_types: Optional[List[str]] = Field(default_factory=list, description="Preferred cuisines (e.g., Indian, Italian, Japanese)")

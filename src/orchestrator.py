@@ -45,6 +45,10 @@ REPLAN_PATTERNS = (
     "begin again", "plan a new trip", "start again",
 )
 
+HOTEL_NIGHTLY_RATES = {"budget": 2500, "mid_range": 5000, "luxury": 9000, "boutique": 7000}
+DEFAULT_NIGHTLY_RATE = 4000
+DAILY_ACTIVITIES_BUFFER = 800
+
 
 def _match_choice(text: str, choices):
     lowered = text.lower()
@@ -96,10 +100,29 @@ class RootOrchestrator:
         return "complete"
 
     def estimate_trip_cost(self, destination: str, days: int, hotel_type: str = None) -> int:
-        """Rough per-day cost heuristic in INR, used only as an advisory budget check."""
-        per_day = {"budget": 2500, "mid_range": 5000, "luxury": 9000, "boutique": 7000}.get(hotel_type, 4000)
+        """Rough per-day cost heuristic in INR, used as a fallback advisory budget check
+        before the user has picked a specific transport option or hotel tier."""
+        per_day = HOTEL_NIGHTLY_RATES.get(hotel_type, DEFAULT_NIGHTLY_RATE)
         transport_buffer = 6000
         return per_day * (days or 0) + transport_buffer
+
+    def budget_breakdown(self, state: TravelState) -> dict:
+        """Accurate budget estimate built from the traveler's actual selections
+        (transport option + hotel tier) rather than a flat heuristic. Falls back to
+        0 for any piece not yet chosen, so it's safe to call at any stage."""
+        p = state.preferences
+        transport = p.transport_cost or 0
+        hotel_total = (p.hotel_cost_per_night or 0) * (p.days or 0)
+        activities_buffer = DAILY_ACTIVITIES_BUFFER * (p.days or 0)
+        grand_total = transport + hotel_total + activities_buffer
+        return {
+            "transport": transport,
+            "hotel_total": hotel_total,
+            "activities_buffer": activities_buffer,
+            "grand_total": grand_total,
+            "budget": p.budget,
+            "over_budget": bool(p.budget and grand_total > p.budget),
+        }
 
     def reset_state(self, state: TravelState) -> None:
         state.preferences = TravelPreferences()
@@ -107,6 +130,7 @@ class RootOrchestrator:
         state.active_agent = "Concierge"
         state.dna_insights = []
         state.messages = []
+        state.transport_options = []
 
     def _extract_preferences(self, state: TravelState, user_input: str) -> None:
         """Best-effort free-text extraction. This is an LLM call — only invoke it
@@ -225,27 +249,74 @@ class RootOrchestrator:
 
         return self._arrival_time_prompt(state)
 
-    def _handle_transport_suggestions(self, state: TravelState, user_input: str) -> str:
-        suggestions_text = None
+    def _fetch_transport_options(self, state: TravelState) -> list:
         try:
-            result = self.transport.run(state, user_input)
-            suggestions_text = result.get("suggestions")
+            result = self.transport.run(state, "")
+            options = result.get("options") or []
         except Exception:
-            suggestions_text = None
-
-        if not suggestions_text:
-            mock = self.transport.get_mock_suggestions(
+            options = []
+        if not options:
+            options = self.transport.get_mock_suggestions(
                 state.preferences.origin, state.preferences.destination, state.preferences.arrival_time)
-            suggestions_text = "\n".join(
-                f"- {mode.title()}: {info['price']}, {info['duration']} ({info['availability']})"
-                for mode, info in mock.items())
+        return options
 
-        state.preferences.transport_suggestions = suggestions_text
-
+    def _transport_options_prompt(self, state: TravelState) -> str:
+        lines = [
+            f"- **{o['mode'].title()}**: ₹{o['price']:,}, {o['duration']} "
+            f"({o['departure']} → {o['arrival']}) — {o['why']}"
+            for o in state.transport_options
+        ]
         return (f"Based on your **{state.preferences.arrival_time.replace('_', ' ')}** arrival "
                 f"preference, here's what I found for {state.preferences.origin} → "
-                f"{state.preferences.destination}:\n\n{suggestions_text}\n\n"
-                "Now, what type of hotel do you prefer? **Budget, Mid-range, Luxury, or Boutique.**")
+                f"{state.preferences.destination}:\n\n" + "\n".join(lines) +
+                "\n\nPick one of the options above, or just tell me which one you'd like.")
+
+    def _match_transport_option(self, options: list, text: str):
+        lowered = text.lower()
+        for opt in options:
+            if opt["mode"].lower() in lowered:
+                return opt
+        return None
+
+    def _handle_transport_suggestions(self, state: TravelState, user_input: str) -> str:
+        # Options already on the table from a previous turn — try to match the
+        # user's text against them instead of re-fetching (avoids a wasted LLM call
+        # and lets typing "the flight" work the same as clicking that card).
+        if state.transport_options:
+            matched = self._match_transport_option(state.transport_options, user_input)
+            if matched:
+                return self.select_transport_option(state, matched, record_message=False)
+            return self._transport_options_prompt(state)
+
+        state.transport_options = self._fetch_transport_options(state)
+        return self._transport_options_prompt(state)
+
+    def select_transport_option(self, state: TravelState, option: dict, record_message: bool = True) -> str:
+        """Called directly by the UI when the user clicks a transport option card
+        (or matched from typed text). Bypasses process_turn entirely since there's
+        no free text to interpret — the choice is already fully structured."""
+        state.preferences.transport_cost = option["price"]
+        state.preferences.transport_suggestions = (
+            f"{option['mode'].title()} — ₹{option['price']:,}, {option['duration']} "
+            f"({option['departure']} → {option['arrival']})")
+        state.transport_options = []
+
+        if record_message:
+            state.messages.append({
+                "role": "user",
+                "content": f"[Selected transport: {option['mode'].title()} — ₹{option['price']:,}]"
+            })
+        response = "Great choice! " + self._hotel_type_prompt()
+        state.preferences.planning_stage = self._current_stage(state.preferences, bool(state.itinerary_data))
+        state.messages.append({"role": "assistant", "content": response})
+        return response
+
+    def _hotel_type_prompt(self) -> str:
+        return "What type of hotel do you prefer? **Budget, Mid-range, Luxury, or Boutique.**"
+
+    def _food_preferences_prompt(self) -> str:
+        return ("What are your food preferences? **Vegetarian, Vegan, Non-vegetarian, or No "
+                "restrictions?** Feel free to mention favorite cuisines too.")
 
     def _handle_hotel_type(self, state: TravelState, user_input: str) -> str:
         matched = _match_choice(user_input, HOTEL_TYPE_CHOICES)
@@ -256,9 +327,22 @@ class RootOrchestrator:
 
         if matched:
             state.preferences.hotel_type = matched
+            state.preferences.hotel_cost_per_night = HOTEL_NIGHTLY_RATES.get(matched, DEFAULT_NIGHTLY_RATE)
             return self._handle_food_preferences(state, user_input, prompt_only=True)
 
-        return "What type of hotel do you prefer? **Budget, Mid-range, Luxury, or Boutique.**"
+        return self._hotel_type_prompt()
+
+    def select_hotel_tier(self, state: TravelState, tier: str) -> str:
+        """Called directly by the UI when the user clicks a hotel tier card."""
+        state.preferences.hotel_type = tier
+        state.preferences.hotel_cost_per_night = HOTEL_NIGHTLY_RATES.get(tier, DEFAULT_NIGHTLY_RATE)
+
+        label = tier.replace('_', ' ').title()
+        state.messages.append({"role": "user", "content": f"[Selected hotel tier: {label}]"})
+        response = self._food_preferences_prompt()
+        state.preferences.planning_stage = self._current_stage(state.preferences, bool(state.itinerary_data))
+        state.messages.append({"role": "assistant", "content": response})
+        return response
 
     def _handle_food_preferences(self, state: TravelState, user_input: str, prompt_only: bool = False) -> str:
         if not prompt_only:
@@ -271,8 +355,18 @@ class RootOrchestrator:
                 state.preferences.food_preferences = matched
                 return self._handle_ready_to_plan(state, user_input, summary_only=True)
 
-        return ("What are your food preferences? **Vegetarian, Vegan, Non-vegetarian, or No "
-                "restrictions?** Feel free to mention favorite cuisines too.")
+        return self._food_preferences_prompt()
+
+    def select_food_preferences(self, state: TravelState, choices: list) -> str:
+        """Called directly by the UI when the user confirms food preference chips."""
+        state.preferences.food_preferences = choices
+
+        label = ", ".join(c.replace('_', ' ').title() for c in choices) if choices else "No preference"
+        state.messages.append({"role": "user", "content": f"[Selected food preference: {label}]"})
+        response = self._handle_ready_to_plan(state, "", summary_only=True)
+        state.preferences.planning_stage = self._current_stage(state.preferences, bool(state.itinerary_data))
+        state.messages.append({"role": "assistant", "content": response})
+        return response
 
     def _handle_ready_to_plan(self, state: TravelState, user_input: str, summary_only: bool = False) -> str:
         if not summary_only:
@@ -286,7 +380,13 @@ class RootOrchestrator:
         # Re-read after the possible extraction above: _extract_preferences replaces
         # state.preferences with a new object rather than mutating in place.
         p = state.preferences
-        estimated_cost = self.estimate_trip_cost(p.destination, p.days, p.hotel_type)
+        if p.transport_cost is not None and p.hotel_cost_per_night is not None:
+            # Accurate estimate built from the traveler's actual selections.
+            estimated_cost = self.budget_breakdown(state)["grand_total"]
+        else:
+            # No selections yet (e.g. answered entirely via free text) — fall back
+            # to the flat heuristic.
+            estimated_cost = self.estimate_trip_cost(p.destination, p.days, p.hotel_type)
         warning = ""
         if p.budget and estimated_cost > p.budget:
             warning = (f"\n\n⚠️ Budget Alert: This trip is roughly estimated at {estimated_cost} INR, "

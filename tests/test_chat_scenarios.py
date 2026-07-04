@@ -65,6 +65,12 @@ def render_itinerary(itinerary_data):
     return {"total_spend": total_spend, "days": rendered_days}
 
 
+def transport_option(mode="flight", price=6000, duration="2h", departure="09:00 AM",
+                      arrival="11:00 AM", why="Fastest option"):
+    return {"mode": mode, "price": price, "duration": duration,
+            "departure": departure, "arrival": arrival, "why": why}
+
+
 def realistic_itinerary(days=2, per_day_cost=3000):
     """A structured Architect output shaped exactly like the real ItineraryPlan
     schema, standing in for what with_structured_output would return."""
@@ -101,7 +107,7 @@ def test_scenario_piecemeal_info_full_happy_path():
         extraction(budget=120000),
         extraction(origin="Delhi", month="November"),
     ]), patch.object(orchestrator.transport, "run",
-                      return_value={"suggestions": "Flight ₹28,000, 9h layover in Bangkok"}):
+                      return_value={"options": [transport_option(price=28000, duration="9h")]}):
         r1 = orchestrator.process_turn(state, "I want to visit Kyoto")
         assert state.preferences.destination == "Kyoto"
         assert state.preferences.planning_stage == "basic_info"
@@ -120,7 +126,13 @@ def test_scenario_piecemeal_info_full_happy_path():
 
         r5 = orchestrator.process_turn(state, "early morning")
         assert state.preferences.arrival_time == "early_morning"
-        assert "hotel" in r5.lower()
+        assert state.transport_options  # option cards ready for the UI
+        assert "pick one" in r5.lower()
+
+        # User picks the (only) suggested option by naming its mode
+        r5b = orchestrator.process_turn(state, "flight")
+        assert state.preferences.transport_cost == 28000
+        assert "hotel" in r5b.lower()
         assert state.preferences.planning_stage == "hotel_food"
 
         r6 = orchestrator.process_turn(state, "a nice boutique hotel please")
@@ -181,7 +193,7 @@ def test_scenario_arrival_time_phrasing_variety():
         state.preferences.budget = 40000
 
         with patch.object(orchestrator.transport, "run",
-                           return_value={"suggestions": "Bus ₹1,200, 8h overnight"}):
+                           return_value={"options": [transport_option(mode="bus", price=1200, duration="8h")]}):
             orchestrator.process_turn(state, phrase)
 
         assert state.preferences.arrival_time == expected, f"failed for phrasing: {phrase!r}"
@@ -378,8 +390,12 @@ def test_scenario_total_llm_outage_degrades_gracefully_end_to_end():
 
         r2 = orchestrator.process_turn(state, "morning")
         assert state.preferences.arrival_time == "morning"
-        assert state.preferences.transport_suggestions  # mock fallback populated it
-        assert "hotel" in r2.lower()
+        assert state.transport_options  # mock fallback populated cards for the UI
+        assert "pick one" in r2.lower()
+
+        r2b = orchestrator.process_turn(state, "flight")
+        assert state.preferences.transport_suggestions  # selection recorded despite the outage
+        assert "hotel" in r2b.lower()
 
         r3 = orchestrator.process_turn(state, "mid-range hotel")
         assert state.preferences.hotel_type == "mid_range"

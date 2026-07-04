@@ -94,8 +94,14 @@ def test_full_stage_progression_to_ready_to_plan():
          patch.object(orchestrator.transport, "run", side_effect=Exception("no llm")):
         r1 = orchestrator.process_turn(state, "early morning please")
         assert state.preferences.arrival_time == "early_morning"
+        assert state.transport_options  # fallback mock options populated for the UI cards
+        assert "pick one" in r1.lower()
+
+        # User picks a transport option by naming its mode (matches a fallback option)
+        r1b = orchestrator.process_turn(state, "flight")
         assert state.preferences.transport_suggestions is not None
-        assert "hotel" in r1.lower()
+        assert state.preferences.transport_cost is not None
+        assert "hotel" in r1b.lower()
 
         r2 = orchestrator.process_turn(state, "a luxury hotel")
         assert state.preferences.hotel_type == "luxury"
@@ -214,3 +220,119 @@ def test_replan_resets_state():
     assert state.itinerary_data is None
     assert state.preferences.planning_stage == "basic_info"
     assert "start fresh" in response.lower()
+
+
+# ============================================================================
+# Interactive card selection (transport / hotel / food) — the UI calls these
+# methods directly on a button click, bypassing process_turn's text parsing.
+# ============================================================================
+def test_select_transport_option_sets_cost_and_advances_to_hotel_prompt():
+    orchestrator = _orchestrator()
+    state = TravelState(session_id="test")
+    state.preferences.origin = "Mumbai"
+    state.preferences.destination = "Goa"
+    state.preferences.days = 3
+    state.preferences.budget = 50000
+    state.preferences.arrival_time = "morning"
+    state.transport_options = [
+        {"mode": "flight", "price": 6000, "duration": "2h", "departure": "09:00",
+         "arrival": "11:00", "why": "fastest"},
+    ]
+
+    response = orchestrator.select_transport_option(state, state.transport_options[0])
+
+    assert state.preferences.transport_cost == 6000
+    assert state.preferences.transport_suggestions is not None
+    assert state.transport_options == []  # cards cleared once a choice is made
+    assert "hotel" in response.lower()
+    assert state.preferences.planning_stage == "hotel_food"
+    # The selection is recorded in the transcript like a normal turn
+    assert any("flight" in m["content"].lower() for m in state.messages if m["role"] == "user")
+
+
+def test_select_hotel_tier_sets_nightly_rate_and_advances_to_food_prompt():
+    orchestrator = _orchestrator()
+    state = TravelState(session_id="test")
+    state.preferences.origin = "Mumbai"
+    state.preferences.destination = "Goa"
+    state.preferences.days = 3
+    state.preferences.budget = 50000
+    state.preferences.arrival_time = "morning"
+    state.preferences.transport_suggestions = "Flight — ₹6,000"
+    state.preferences.transport_cost = 6000
+
+    response = orchestrator.select_hotel_tier(state, "luxury")
+
+    assert state.preferences.hotel_type == "luxury"
+    assert state.preferences.hotel_cost_per_night == 9000
+    assert "food" in response.lower()
+
+
+def test_select_food_preferences_advances_to_ready_to_plan_summary():
+    orchestrator = _orchestrator()
+    state = TravelState(session_id="test")
+    state.preferences.origin = "Mumbai"
+    state.preferences.destination = "Goa"
+    state.preferences.days = 3
+    state.preferences.budget = 50000
+    state.preferences.arrival_time = "morning"
+    state.preferences.transport_suggestions = "Flight — ₹6,000"
+    state.preferences.transport_cost = 6000
+    state.preferences.hotel_type = "mid_range"
+    state.preferences.hotel_cost_per_night = 5000
+
+    response = orchestrator.select_food_preferences(state, ["vegetarian", "vegan"])
+
+    assert state.preferences.food_preferences == ["vegetarian", "vegan"]
+    assert state.preferences.planning_stage == "ready_to_plan"
+    assert "shall i go ahead" in response.lower()
+
+
+def test_budget_breakdown_uses_actual_selections_not_flat_heuristic():
+    orchestrator = _orchestrator()
+    state = TravelState(session_id="test")
+    state.preferences.days = 5
+    state.preferences.budget = 15000
+    state.preferences.transport_cost = 6500
+    state.preferences.hotel_cost_per_night = 2500  # budget tier
+
+    breakdown = orchestrator.budget_breakdown(state)
+
+    assert breakdown["transport"] == 6500
+    assert breakdown["hotel_total"] == 2500 * 5
+    assert breakdown["grand_total"] == 6500 + 2500 * 5 + 800 * 5
+    assert breakdown["over_budget"] is True
+
+
+def test_budget_breakdown_defaults_to_zero_before_any_selection():
+    orchestrator = _orchestrator()
+    state = TravelState(session_id="test")
+    state.preferences.days = 5
+    state.preferences.budget = 15000
+
+    breakdown = orchestrator.budget_breakdown(state)
+
+    assert breakdown["transport"] == 0
+    assert breakdown["hotel_total"] == 0
+    assert breakdown["over_budget"] is False
+
+
+def test_typing_transport_mode_name_matches_pending_option_cards():
+    """A user who types instead of clicking should get the same result as clicking,
+    as long as their text names one of the currently-offered options."""
+    orchestrator = _orchestrator()
+    state = TravelState(session_id="test")
+    state.preferences.origin = "Mumbai"
+    state.preferences.destination = "Goa"
+    state.preferences.days = 3
+    state.preferences.budget = 50000
+    state.preferences.arrival_time = "morning"
+    state.transport_options = [
+        {"mode": "train", "price": 1500, "duration": "10h", "departure": "20:00",
+         "arrival": "06:00", "why": "overnight and cheap"},
+    ]
+
+    response = orchestrator.process_turn(state, "I'll take the train")
+
+    assert state.preferences.transport_cost == 1500
+    assert "hotel" in response.lower()
