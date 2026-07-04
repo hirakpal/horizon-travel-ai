@@ -2,3 +2,11 @@ streamlit
 pandas
 plotly
 fpdf
+fastapi
+uvicorn
+langgraph
+crewai
+langchain-google-genai
+langchain-anthropic
+pydantic
+python-dotenv
