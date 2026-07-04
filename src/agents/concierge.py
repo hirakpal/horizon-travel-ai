@@ -14,7 +14,24 @@ class ConciergeAgent(BaseAgent):
     def run(self, state: TravelState, input_text: str) -> dict:
         # Use model_dump() for Pydantic V2
         prefs = state.preferences.model_dump()
-        
+        if prefs.budget and not prefs.destination:
+            # This logic mimics a "budget-aware menu"
+            options = [
+                "Budget Backpacker: Hostels & local transit (~budget/3)",
+                "Comfort Explorer: 3-star hotels & mixed transit (~budget/2)",
+                "Premium Traveler: 4-star hotels & private transfers (~budget)",
+                "Luxury Seeker: 5-star resorts & private guides (~budget * 1.5)",
+                "Ultra-Premium: Bespoke experiences & VIP access (~budget * 2.5)"
+            ]
+            
+            # Logic to check budget spill
+            warning = ""
+            if prefs.budget < 50000: # Example threshold
+                warning = "⚠️ Note: Your current budget is quite tight for this region, which may limit hotel choices."
+
+            reply = f"I've analyzed your {prefs.budget} INR budget. To help me build the right plan, please pick an experience tier:\n\n" + \
+                    "\n".join(options) + f"\n\n{warning}"
+            return {"reply": reply}
         # Identify missing fields
         missing = [k for k, v in prefs.items() if v is None and k != "fitness_level"]
 
