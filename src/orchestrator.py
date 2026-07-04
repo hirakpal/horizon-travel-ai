@@ -111,6 +111,22 @@ class RootOrchestrator:
         state.dna_insights = []
         state.messages = []
 
+    def _extract_preferences(self, state: TravelState, user_input: str) -> None:
+        """Best-effort free-text extraction. This is an LLM call — only invoke it
+        where a deterministic keyword match can't reasonably cover the input, so a
+        single turn never has to wait on more than one LLM round trip unless the
+        itinerary itself is being built."""
+        try:
+            extraction_result = self.extractor.run(state, user_input)
+            updated_prefs = extraction_result.get("updated_preferences")
+            if updated_prefs is not None:
+                updated_data = state.preferences.model_dump()
+                new_data = updated_prefs.model_dump()
+                updated_data.update({k: v for k, v in new_data.items() if v not in (None, [], {})})
+                state.preferences = TravelPreferences(**updated_data)
+        except Exception:
+            pass  # deterministic stage matchers still cover the flow
+
     # ------------------------------------------------------------------
     # Main entry point
     # ------------------------------------------------------------------
@@ -125,27 +141,18 @@ class RootOrchestrator:
             state.messages.append({"role": "assistant", "content": response})
             return response
 
-        # 1. Extraction: best-effort update of preferences from free-text input
-        try:
-            extraction_result = self.extractor.run(state, user_input)
-            updated_prefs = extraction_result.get("updated_preferences")
-            if updated_prefs is not None:
-                updated_data = state.preferences.model_dump()
-                new_data = updated_prefs.model_dump()
-                updated_data.update({k: v for k, v in new_data.items() if v not in (None, [], {})})
-                state.preferences = TravelPreferences(**updated_data)
-        except Exception:
-            pass  # deterministic stage matchers below still cover the flow
-
         state.messages.append({"role": "user", "content": user_input})
         p = state.preferences
 
-        # 2. Stage-driven conversation flow. Handlers may chain straight into the
+        # Stage-driven conversation flow. Handlers may chain straight into the
         # next question within the same turn, so the stage is recomputed from the
         # final state afterwards rather than trusted from this initial dispatch.
         stage = self._current_stage(p, bool(state.itinerary_data))
 
         if stage == "basic_info":
+            # Free-form input (destination/budget/days/origin) genuinely needs the
+            # extractor — there's no fixed vocabulary to keyword-match against.
+            self._extract_preferences(state, user_input)
             state.active_agent = "Concierge"
             response = self._handle_basic_info(state, user_input)
         elif stage == "transport":
@@ -190,6 +197,14 @@ class RootOrchestrator:
 
     def _handle_arrival_time(self, state: TravelState, user_input: str) -> str:
         matched = _match_choice(user_input, ARRIVAL_TIME_CHOICES)
+        if not matched:
+            # Fall back to the LLM extractor only if the keyword match missed —
+            # keeps the common case (user picks one of the offered options) to a
+            # single LLM call for the whole turn (the transport search below).
+            self._extract_preferences(state, user_input)
+            if state.preferences.arrival_time:
+                matched = _match_choice(state.preferences.arrival_time, ARRIVAL_TIME_CHOICES)
+
         if matched:
             state.preferences.arrival_time = matched
             return self._handle_transport_suggestions(state, user_input)
@@ -224,6 +239,11 @@ class RootOrchestrator:
 
     def _handle_hotel_type(self, state: TravelState, user_input: str) -> str:
         matched = _match_choice(user_input, HOTEL_TYPE_CHOICES)
+        if not matched:
+            self._extract_preferences(state, user_input)
+            if state.preferences.hotel_type:
+                matched = _match_choice(state.preferences.hotel_type, HOTEL_TYPE_CHOICES)
+
         if matched:
             state.preferences.hotel_type = matched
             return self._handle_food_preferences(state, user_input, prompt_only=True)
@@ -233,6 +253,10 @@ class RootOrchestrator:
     def _handle_food_preferences(self, state: TravelState, user_input: str, prompt_only: bool = False) -> str:
         if not prompt_only:
             matched = _match_food_preferences(user_input)
+            if not matched:
+                self._extract_preferences(state, user_input)
+                if state.preferences.food_preferences:
+                    matched = state.preferences.food_preferences
             if matched:
                 state.preferences.food_preferences = matched
                 return self._handle_ready_to_plan(state, user_input, summary_only=True)
@@ -241,11 +265,17 @@ class RootOrchestrator:
                 "restrictions?** Feel free to mention favorite cuisines too.")
 
     def _handle_ready_to_plan(self, state: TravelState, user_input: str, summary_only: bool = False) -> str:
+        if not summary_only:
+            if _is_affirmative(user_input):
+                return self._build_itinerary(state, user_input)
+            # Not an obvious yes — maybe the user is adjusting a detail. Extraction
+            # here is a fallback, not the common path, so it doesn't slow down the
+            # simple confirm-and-build turn.
+            self._extract_preferences(state, user_input)
+
+        # Re-read after the possible extraction above: _extract_preferences replaces
+        # state.preferences with a new object rather than mutating in place.
         p = state.preferences
-
-        if not summary_only and _is_affirmative(user_input):
-            return self._build_itinerary(state, user_input)
-
         estimated_cost = self.estimate_trip_cost(p.destination, p.days, p.hotel_type)
         warning = ""
         if p.budget and estimated_cost > p.budget:
