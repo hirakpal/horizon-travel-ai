@@ -23,8 +23,15 @@ import os
 from src.orchestrator import RootOrchestrator
 from src.models.state import TravelState
 from src.models.preferences import TravelPreferences
+from src.auth import db as auth_db
+from src.auth import service as auth_service
+from src.auth.service import AuthError
 if "orchestrator" not in st.session_state:
     st.session_state.orchestrator = RootOrchestrator()
+if "auth_conn" not in st.session_state:
+    st.session_state.auth_conn = auth_db.get_connection()
+if "auth_user" not in st.session_state:
+    st.session_state.auth_user = None  # None = logged out; a User model once logged in
 if "travel_state" not in st.session_state:
     st.session_state.travel_state = TravelState(session_id="hirak_001")
 else:
@@ -62,6 +69,31 @@ CONF = {
 
 def conf_band(score: int) -> str:
     return "high" if score >= 80 else "medium" if score >= 55 else "low"
+
+
+# ============================================================================
+# Profile preference vocabulary — used by Sign Up and Profile pages
+# ============================================================================
+PROFILE_FOOD_PREF_LABELS = {
+    "vegetarian": "🥗 Vegetarian", "vegan": "🌱 Vegan",
+    "non_veg": "🍗 Non-vegetarian", "no_restrictions": "🍽️ No restrictions",
+}
+TRAVEL_PREF_LABELS = {
+    "adventure": "🧗 Adventure", "relaxation": "🏖️ Relaxation", "culture_heritage": "🏛️ Culture & heritage",
+    "nature_wildlife": "🌿 Nature & wildlife", "nightlife": "🌃 Nightlife", "shopping": "🛍️ Shopping",
+    "wellness_spa": "💆 Wellness & spa", "family_friendly": "👨‍👩‍👧 Family-friendly",
+    "solo_travel": "🎒 Solo travel", "budget_conscious": "💸 Budget-conscious",
+    "luxury": "✨ Luxury", "photography": "📷 Photography",
+}
+INFLIGHT_PREF_LABELS = {
+    "window_seat": "🪟 Window seat", "aisle_seat": "🚶 Aisle seat", "extra_legroom": "🦵 Extra legroom",
+    "vegetarian_meal": "🥗 Vegetarian meal", "quiet_zone": "🤫 Quiet zone",
+    "early_boarding": "⏱️ Early boarding", "extra_baggage": "🧳 Extra baggage", "wifi": "📶 In-flight Wi-Fi",
+}
+HOTEL_BUDGET_TIER_LABELS = {"budget": "💰 Budget", "medium": "🏨 Medium", "high": "✨ High-end"}
+BED_TYPE_OPTIONS = ["No preference", "Single", "Double", "Twin", "King"]
+VIEW_TYPE_OPTIONS = ["No preference", "Sea view", "City view", "Garden view"]
+SEX_OPTIONS = ["Prefer not to say", "Female", "Male", "Non-binary", "Other"]
 
 
 st.set_page_config(page_title="Horizon • Travel AI", page_icon="🌊",
@@ -635,6 +667,12 @@ if "current_page" not in st.session_state:
     st.session_state.current_page = "Home"
 if "current_destination" not in st.session_state:
     st.session_state.current_destination = "Kyoto, Japan"
+if "reset_stage" not in st.session_state:
+    st.session_state.reset_stage = "request"  # "request" -> "confirm", for Forgot Password
+if "reset_identifier" not in st.session_state:
+    st.session_state.reset_identifier = None
+if "reset_dev_token" not in st.session_state:
+    st.session_state.reset_dev_token = None
 
 
 def set_page(p: str):
@@ -654,18 +692,28 @@ with st.sidebar:
 
     PAGES = [("Home", "🏠"), ("Chat", "💬"), ("Itinerary", "🗺️"),
              ("Travel DNA", "🧬"), ("Explore", "✨")]
+    auth_user = st.session_state.auth_user
+    PAGES.append(("Profile", "👤") if auth_user else ("Login", "🔑"))
+    if not auth_user:
+        PAGES.append(("Sign Up", "📝"))
     for p, icon in PAGES:
         active = st.session_state.current_page == p
         if st.button(f"{icon}  {p}", key=f"nav_{p}", width="stretch",
                      type="primary" if active else "secondary"):
             set_page(p)
 
+    if auth_user:
+        st.caption(f"Logged in as **{auth_user.email or auth_user.phone}**")
+        if st.button("🚪 Log Out", key="nav_logout", width="stretch"):
+            st.session_state.auth_user = None
+            set_page("Home")
+
     st.markdown(
         """<div style="margin-top:1.6rem;padding-top:1rem;border-top:1px solid #334155;
                     font-size:.72rem;color:#64748B">
              Horizon Travel AI · Capstone demo<br>UI shell · mock data mode</div>""",
         unsafe_allow_html=True)
-    
+
     rule()
     st.markdown("### 🛠️ Backend Debug")
     if "travel_state" in st.session_state:
@@ -1088,5 +1136,266 @@ elif page == "Explore":
                          width="stretch"):
                 st.session_state.current_destination = d["name"]
                 set_page("Itinerary")
+
+# ============================================================================
+# LOGIN — holiday-vibe entry point
+# ============================================================================
+elif page == "Login":
+    st.markdown(
+        f'<img src="{scene_svg("#F2994A", "#7C2D12", "🏖️")}" '
+        'style="width:100%;border-radius:20px;margin-bottom:1.2rem" alt="">',
+        unsafe_allow_html=True)
+    st.markdown(
+        """<div style="text-align:center">
+             <div class="hz-eyebrow">🌴 welcome back, wanderer</div>
+             <h1 style="font-family:'Playfair Display',serif;font-size:2.1rem;margin:.3rem 0 .6rem">
+               Your next getaway is one login away</h1>
+             <p style="color:#94A3B8">Sign in to pick up your trip planning, saved preferences, and Travel DNA.</p>
+           </div>""", unsafe_allow_html=True)
+    rule()
+
+    _, col_mid, _ = st.columns([1, 1.3, 1])
+    with col_mid:
+        with st.form("login_form"):
+            identifier = st.text_input("Email or phone number")
+            password = st.text_input("Password", type="password")
+            submitted = st.form_submit_button("🔑 Log In", type="primary", width="stretch")
+        if submitted:
+            user = auth_service.login(st.session_state.auth_conn, identifier, password)
+            if user:
+                st.session_state.auth_user = user
+                set_page("Home")
+            else:
+                st.error("Invalid email/phone or password.")
+
+        link_l, link_r = st.columns(2)
+        with link_l:
+            if st.button("Forgot password?", key="goto_forgot", width="stretch"):
+                st.session_state.reset_stage = "request"
+                set_page("Forgot Password")
+        with link_r:
+            if st.button("Create an account", key="goto_signup", width="stretch"):
+                set_page("Sign Up")
+
+# ============================================================================
+# SIGN UP
+# ============================================================================
+elif page == "Sign Up":
+    st.markdown(
+        f'<img src="{scene_svg("#FBBF24", "#312E81", "🧳")}" '
+        'style="width:100%;border-radius:20px;margin-bottom:1.2rem" alt="">',
+        unsafe_allow_html=True)
+    st.markdown("## 📝 Create your account")
+    st.markdown('<p style="color:#94A3B8;margin-top:-.4rem">Sign up now — fill in your travel '
+                "profile now or anytime later from the Profile page.</p>", unsafe_allow_html=True)
+    rule()
+
+    _, col_mid, _ = st.columns([1, 1.4, 1])
+    with col_mid:
+        name = st.text_input("Full name", key="signup_name")
+        email = st.text_input("Email address", key="signup_email")
+        phone = st.text_input("Phone number", key="signup_phone")
+        password = st.text_input("Password", type="password", key="signup_password",
+                                  help="At least 8 characters.")
+        confirm_password = st.text_input("Confirm password", type="password", key="signup_confirm")
+
+        with st.expander("✨ Fill in your travel profile now (optional)"):
+            dob = st.date_input("Date of birth", value=None, key="signup_dob",
+                                 min_value=datetime(1900, 1, 1), max_value=datetime.now())
+            sex = st.selectbox("Sex", SEX_OPTIONS, key="signup_sex")
+            address = st.text_area("Address", key="signup_address")
+            food_prefs = st.multiselect("Food preferences", options=list(PROFILE_FOOD_PREF_LABELS.keys()),
+                                         format_func=lambda k: PROFILE_FOOD_PREF_LABELS[k], key="signup_food")
+            travel_prefs = st.multiselect("Travel preferences", options=list(TRAVEL_PREF_LABELS.keys()),
+                                           format_func=lambda k: TRAVEL_PREF_LABELS[k], key="signup_travel")
+            inflight_prefs = st.multiselect("In-flight preferences", options=list(INFLIGHT_PREF_LABELS.keys()),
+                                             format_func=lambda k: INFLIGHT_PREF_LABELS[k], key="signup_inflight")
+            st.markdown("**Hotel preferences**")
+            hcol1, hcol2, hcol3 = st.columns(3)
+            with hcol1:
+                budget_tier = st.selectbox("Budget tier", options=list(HOTEL_BUDGET_TIER_LABELS.keys()),
+                                            format_func=lambda k: HOTEL_BUDGET_TIER_LABELS[k], key="signup_tier")
+            with hcol2:
+                bed_type = st.selectbox("Bed type", BED_TYPE_OPTIONS, key="signup_bed")
+            with hcol3:
+                view = st.selectbox("View", VIEW_TYPE_OPTIONS, key="signup_view")
+            acol1, acol2, acol3 = st.columns(3)
+            with acol1:
+                pool = st.checkbox("🏊 Pool", key="signup_pool")
+            with acol2:
+                gym = st.checkbox("🏋️ Gym", key="signup_gym")
+            with acol3:
+                spa = st.checkbox("💆 Spa", key="signup_spa")
+
+        if st.button("Create Account", type="primary", width="stretch"):
+            if password != confirm_password:
+                st.error("Passwords don't match.")
+            else:
+                try:
+                    conn = st.session_state.auth_conn
+                    user = auth_service.sign_up(conn, email or None, phone or None, password, name=name or None)
+                    user = auth_service.update_profile(
+                        conn, user.id,
+                        date_of_birth=dob.isoformat() if dob else None,
+                        sex=sex if sex != "Prefer not to say" else None,
+                        address=address or None,
+                        food_preferences=food_prefs,
+                        travel_preferences=travel_prefs,
+                        inflight_preferences=inflight_prefs,
+                        hotel_preferences={
+                            "budget_tier": budget_tier, "bed_type": bed_type,
+                            "view": view, "pool": pool, "gym": gym, "spa": spa,
+                        },
+                    )
+                    st.session_state.auth_user = user
+                    set_page("Home")
+                except AuthError as e:
+                    st.error(str(e))
+
+        if st.button("Already have an account? Log in", key="goto_login", width="stretch"):
+            set_page("Login")
+
+# ============================================================================
+# FORGOT PASSWORD — two-step: identifier -> token + new password
+# ============================================================================
+elif page == "Forgot Password":
+    st.markdown("## 🔓 Forgot Password")
+    rule()
+    _, col_mid, _ = st.columns([1, 1.3, 1])
+    with col_mid:
+        if st.session_state.reset_stage == "request":
+            st.write("Enter the email address or phone number on your account, and we'll send "
+                     "you an 8-character reset code.")
+            identifier = st.text_input("Email or phone number", key="forgot_identifier")
+            if st.button("Send Reset Code", type="primary", width="stretch"):
+                result = auth_service.request_password_reset(st.session_state.auth_conn, identifier)
+                if not result["found"]:
+                    st.error("No account found with that email or phone number.")
+                else:
+                    st.session_state.reset_identifier = identifier
+                    st.session_state.reset_dev_token = result["dev_token"]
+                    st.session_state.reset_stage = "confirm"
+                    if result["delivered"]:
+                        st.success(f"A reset code was sent via {result['channel']}.")
+                    st.rerun()
+
+        else:
+            if st.session_state.reset_dev_token:
+                st.warning(f"⚠️ DEV MODE — email/SMS delivery isn't configured (or failed), so here's "
+                           f"your code directly: **{st.session_state.reset_dev_token}**")
+            st.write(f"Enter the code sent for **{st.session_state.reset_identifier}**, and choose a new password.")
+            token = st.text_input("Reset code", key="forgot_token")
+            new_password = st.text_input("New password", type="password", key="forgot_new_password",
+                                          help="At least 8 characters.")
+            confirm_new_password = st.text_input("Confirm new password", type="password",
+                                                  key="forgot_confirm_password")
+            if st.button("Reset Password", type="primary", width="stretch"):
+                if new_password != confirm_new_password:
+                    st.error("Passwords don't match.")
+                else:
+                    try:
+                        if auth_service.reset_password(st.session_state.auth_conn, token, new_password):
+                            st.session_state.reset_stage = "request"
+                            st.session_state.reset_dev_token = None
+                            st.success("Password reset! Please log in with your new password.")
+                            set_page("Login")
+                        else:
+                            st.error("That code is invalid or has expired. Please request a new one.")
+                    except AuthError as e:
+                        st.error(str(e))
+            if st.button("Start over", key="forgot_start_over"):
+                st.session_state.reset_stage = "request"
+                st.rerun()
+
+# ============================================================================
+# PROFILE
+# ============================================================================
+elif page == "Profile":
+    if not st.session_state.auth_user:
+        st.info("Log in to view and edit your profile.")
+        if st.button("Go to Login", type="primary"):
+            set_page("Login")
+    else:
+        conn = st.session_state.auth_conn
+        user = st.session_state.auth_user
+        profile = user.profile
+
+        st.markdown("## 👤 Your Profile")
+        st.caption(user.email or user.phone)
+        rule()
+
+        name = st.text_input("Full name", value=profile.name or "")
+        dob_value = datetime.fromisoformat(profile.date_of_birth).date() if profile.date_of_birth else None
+        dob = st.date_input("Date of birth", value=dob_value, min_value=datetime(1900, 1, 1), max_value=datetime.now())
+        sex_index = SEX_OPTIONS.index(profile.sex) if profile.sex in SEX_OPTIONS else 0
+        sex = st.selectbox("Sex", SEX_OPTIONS, index=sex_index)
+        address = st.text_area("Address", value=profile.address or "")
+
+        food_prefs = st.multiselect("Food preferences", options=list(PROFILE_FOOD_PREF_LABELS.keys()),
+                                     default=[f for f in profile.food_preferences if f in PROFILE_FOOD_PREF_LABELS],
+                                     format_func=lambda k: PROFILE_FOOD_PREF_LABELS[k])
+        travel_prefs_known = [t for t in profile.travel_preferences if t in TRAVEL_PREF_LABELS]
+        travel_prefs = st.multiselect("Travel preferences", options=list(TRAVEL_PREF_LABELS.keys()),
+                                       default=travel_prefs_known, format_func=lambda k: TRAVEL_PREF_LABELS[k])
+        inflight_prefs_known = [i for i in profile.inflight_preferences if i in INFLIGHT_PREF_LABELS]
+        inflight_prefs = st.multiselect("In-flight preferences", options=list(INFLIGHT_PREF_LABELS.keys()),
+                                         default=inflight_prefs_known, format_func=lambda k: INFLIGHT_PREF_LABELS[k])
+
+        st.markdown("#### 🏨 Hotel preferences")
+        hcol1, hcol2, hcol3 = st.columns(3)
+        with hcol1:
+            tier_index = list(HOTEL_BUDGET_TIER_LABELS.keys()).index(profile.hotel_preferences.budget_tier) \
+                if profile.hotel_preferences.budget_tier in HOTEL_BUDGET_TIER_LABELS else 0
+            budget_tier = st.selectbox("Budget tier", options=list(HOTEL_BUDGET_TIER_LABELS.keys()),
+                                        format_func=lambda k: HOTEL_BUDGET_TIER_LABELS[k], index=tier_index)
+        with hcol2:
+            bed_value = profile.hotel_preferences.bed_type or "No preference"
+            bed_index = BED_TYPE_OPTIONS.index(bed_value) if bed_value in BED_TYPE_OPTIONS else 0
+            bed_type = st.selectbox("Bed type", BED_TYPE_OPTIONS, index=bed_index)
+        with hcol3:
+            view_value = profile.hotel_preferences.view or "No preference"
+            view_index = VIEW_TYPE_OPTIONS.index(view_value) if view_value in VIEW_TYPE_OPTIONS else 0
+            view = st.selectbox("View", VIEW_TYPE_OPTIONS, index=view_index)
+        acol1, acol2, acol3 = st.columns(3)
+        with acol1:
+            pool = st.checkbox("🏊 Pool", value=profile.hotel_preferences.pool)
+        with acol2:
+            gym = st.checkbox("🏋️ Gym", value=profile.hotel_preferences.gym)
+        with acol3:
+            spa = st.checkbox("💆 Spa", value=profile.hotel_preferences.spa)
+
+        if st.button("💾 Save Profile", type="primary"):
+            updated = auth_service.update_profile(
+                conn, user.id,
+                name=name or None, date_of_birth=dob.isoformat() if dob else None,
+                sex=sex if sex != "Prefer not to say" else None, address=address or None,
+                food_preferences=food_prefs, travel_preferences=travel_prefs,
+                inflight_preferences=inflight_prefs,
+                hotel_preferences={"budget_tier": budget_tier, "bed_type": bed_type, "view": view,
+                                    "pool": pool, "gym": gym, "spa": spa},
+            )
+            st.session_state.auth_user = updated
+            st.success("Profile saved!")
+            st.rerun()
+
+        rule()
+        st.markdown("#### 🧬 Travel DNA")
+        if profile.travel_dna_notes:
+            for note in profile.travel_dna_notes:
+                st.markdown(f"- {note}")
+        else:
+            st.caption("No Travel DNA insights learned yet — plan a trip in Chat to start building one.")
+
+        travel_state = st.session_state.get("travel_state")
+        has_learnings = travel_state and (travel_state.dna_insights or travel_state.itinerary_data)
+        if has_learnings:
+            if st.button("🔄 Sync Travel DNA from my latest trip"):
+                updated = auth_service.sync_travel_dna_into_profile(
+                    conn, user.id, travel_state.preferences, travel_state.dna_insights)
+                st.session_state.auth_user = updated
+                st.success("Profile updated with insights from your latest trip!")
+                st.rerun()
+        else:
+            st.caption("Plan and complete a trip in Chat, then come back here to sync what Horizon learned.")
 
 st.caption("Horizon Travel AI • Capstone Demo")

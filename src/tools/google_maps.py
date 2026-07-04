@@ -1,6 +1,7 @@
 """
 Thin REST wrappers around three Google Maps Platform APIs:
-  - Places API (New)        — text search for real attractions/restaurants, photos
+  - Places API (New)        — text search for real attractions/restaurants, photos,
+                               plus Autocomplete/Place Details for place_id resolution
   - Routes API              — real walking distance/duration between two points
   - Street View Static API  — a street-level image for a given coordinate
 
@@ -11,6 +12,12 @@ fall back to LLM-only content, never crash the chat over a maps API hiccup).
 None of these functions read environment variables themselves; the API key is
 always passed in explicitly, which keeps them trivially mockable in tests and
 makes it obvious at the call site whether a key is configured at all.
+
+Several Google Maps Platform APIs (Place Details, and any locationBias tied to
+a specific place) require a place_id rather than a free-text city/landmark
+name. resolve_place_id() is the entry point for that: it turns "Patna" or
+"Eiffel Tower" into a concrete place_id plus coordinates, via Autocomplete
+first and a plain text search as a fallback.
 """
 import requests
 
@@ -24,11 +31,25 @@ _SEARCH_FIELD_MASK = (
 )
 
 REQUEST_TIMEOUT = 10
+DEFAULT_BIAS_RADIUS_METERS = 20_000.0
 
 
-def text_search_places(query: str, api_key: str, max_results: int = 8) -> list:
+def text_search_places(query: str, api_key: str, max_results: int = 8, location_bias: dict = None) -> list:
     """Places API (New) Text Search. Returns a list of plain dicts:
-    name, address, rating, review_snippet, photo_name, lat, lng, place_id."""
+    name, address, rating, review_snippet, photo_name, lat, lng, place_id.
+
+    `location_bias`, if given, is {"lat": float, "lng": float, "radius": float}
+    (radius in meters, optional) — steers results toward that area, which
+    matters for ambiguous names (many cities/streets share a name worldwide)."""
+    body = {"textQuery": query, "maxResultCount": max_results}
+    if location_bias:
+        body["locationBias"] = {
+            "circle": {
+                "center": {"latitude": location_bias["lat"], "longitude": location_bias["lng"]},
+                "radius": location_bias.get("radius", DEFAULT_BIAS_RADIUS_METERS),
+            }
+        }
+
     response = requests.post(
         f"{PLACES_BASE}/places:searchText",
         headers={
@@ -36,7 +57,7 @@ def text_search_places(query: str, api_key: str, max_results: int = 8) -> list:
             "X-Goog-Api-Key": api_key,
             "X-Goog-FieldMask": _SEARCH_FIELD_MASK,
         },
-        json={"textQuery": query, "maxResultCount": max_results},
+        json=body,
         timeout=REQUEST_TIMEOUT,
     )
     response.raise_for_status()
@@ -115,3 +136,53 @@ def compute_walking_route(origin_lat: float, origin_lng: float,
     duration_str = route.get("duration", "0s")  # e.g. "600s"
     duration_min = round(int(duration_str.rstrip("s")) / 60.0)
     return {"distance_km": distance_km, "duration_min": duration_min}
+
+
+def autocomplete_place_id(query: str, api_key: str):
+    """Places API (New) Autocomplete. Returns the top-matching place_id for a
+    free-text query (city, landmark, address), or None if nothing matched."""
+    response = requests.post(
+        f"{PLACES_BASE}/places:autocomplete",
+        headers={"Content-Type": "application/json", "X-Goog-Api-Key": api_key},
+        json={"input": query},
+        timeout=REQUEST_TIMEOUT,
+    )
+    response.raise_for_status()
+    suggestions = response.json().get("suggestions", [])
+    if not suggestions:
+        return None
+    return suggestions[0].get("placePrediction", {}).get("placeId")
+
+
+def get_place_location(place_id: str, api_key: str):
+    """Place Details (New), location field only. Returns {"lat": float, "lng": float}
+    for a place_id, or None if the place has no location on record."""
+    response = requests.get(
+        f"{PLACES_BASE}/places/{place_id}",
+        headers={"X-Goog-Api-Key": api_key, "X-Goog-FieldMask": "location"},
+        timeout=REQUEST_TIMEOUT,
+    )
+    response.raise_for_status()
+    location = response.json().get("location")
+    if not location:
+        return None
+    return {"lat": location.get("latitude"), "lng": location.get("longitude")}
+
+
+def resolve_place_id(query: str, api_key: str):
+    """Resolves a free-text place name to {"place_id", "lat", "lng"} — the
+    entry point for any call site that has a city/landmark name but needs a
+    place_id (or a reliable lat/lng to bias other searches around). Tries
+    Autocomplete first; if that finds nothing, falls back to the top result
+    of a plain text search rather than giving up."""
+    place_id = autocomplete_place_id(query, api_key)
+    if place_id:
+        location = get_place_location(place_id, api_key)
+        if location:
+            return {"place_id": place_id, "lat": location["lat"], "lng": location["lng"]}
+
+    results = text_search_places(query, api_key, max_results=1)
+    if not results:
+        return None
+    top = results[0]
+    return {"place_id": top["place_id"], "lat": top["lat"], "lng": top["lng"]}
