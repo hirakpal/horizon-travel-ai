@@ -537,15 +537,13 @@ def itinerary_pdf(dest: str, it: dict) -> bytes:
     pdf.set_y(24)
     pdf.set_font("Helvetica", "B", 24)
     pdf.set_text_color(241, 245, 249)
-    pdf.cell(0, 11, A(f"Horizon | {dest}"), new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 11, A(f"Horizon | {dest}"), ln=1)
     pdf.set_font("Helvetica", "", 10)
     pdf.set_text_color(148, 163, 184)
     pdf.multi_cell(0, 5.5, A(it["summary"]))
     pdf.set_font("Helvetica", "B", 10)
     pdf.set_text_color(255, 184, 0)
-    pdf.cell(0, 8, A(f"Overall confidence {it['overall'][0]}%  |  {it['month']}  |  "
-                     f"group of {it['group']}  |  budget {it['budget_label']}"),
-             new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 8, A(f"Overall confidence {it['overall'][0]}% | {it['month']} | group of {it['group']} | budget {it['budget_label']}"), ln=1)
     pdf.ln(2)
     for day in it["days"]:
         y = pdf.get_y()
