@@ -175,7 +175,10 @@ class RootOrchestrator:
             response = ("Your itinerary is ready! Head over to the **Itinerary** tab to view it, "
                         "or type **replan** if you'd like to start planning a new trip.")
 
-        p.planning_stage = self._current_stage(p, bool(state.itinerary_data))
+        # Re-read from state rather than the possibly-stale `p`: any branch above
+        # may have called _extract_preferences, which replaces state.preferences
+        # with a new object instead of mutating it in place.
+        state.preferences.planning_stage = self._current_stage(state.preferences, bool(state.itinerary_data))
 
         clean_response = response.replace('\\n', '\n')
         state.messages.append({"role": "assistant", "content": clean_response})
