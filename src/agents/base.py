@@ -14,7 +14,7 @@ class BaseAgent(ABC):
             # Use base_url instead of openai_api_base
             # Ensure it ends with /v1/chat/completions or just points to the API root
             base_url="https://openrouter.ai/api/v1", 
-            max_tokens=1000
+            max_tokens=8000
         )
 
     @abstractmethod
