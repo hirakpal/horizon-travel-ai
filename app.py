@@ -78,19 +78,19 @@ elif page == "Travel DNA":
 
 elif page == "Explore":
     st.title("✨ Top 10 International Destinations")
-    st.caption("Personalized for your Travel DNA")
+    st.caption("Curated based on your Travel DNA preferences")
     
     destinations = [
-        ("Kyoto, Japan", "Temples & Cherry Blossoms", "97%", "https://picsum.photos/id/1015/600/280"),
-        ("Bali, Indonesia", "Beaches & Spiritual Culture", "92%", "https://picsum.photos/id/1016/600/280"),
-        ("Paris, France", "Art, Romance & Cuisine", "88%", "https://picsum.photos/id/1018/600/280"),
-        ("Santorini, Greece", "Iconic Sunsets", "91%", "https://picsum.photos/id/102/600/280"),
-        ("Swiss Alps", "Mountains & Scenic Trains", "85%", "https://picsum.photos/id/103/600/280"),
-        ("Marrakech, Morocco", "Vibrant Markets", "79%", "https://picsum.photos/id/104/600/280"),
-        ("Banff, Canada", "Crystal Lakes & Rockies", "82%", "https://picsum.photos/id/105/600/280"),
-        ("Barcelona, Spain", "Architecture & Vibes", "87%", "https://picsum.photos/id/106/600/280"),
-        ("Queenstown, New Zealand", "Adventure Capital", "76%", "https://picsum.photos/id/107/600/280"),
-        ("Dubai, UAE", "Luxury & Futuristic", "81%", "https://picsum.photos/id/108/600/280")
+        ("Kyoto, Japan", "Immerse in ancient temples, stroll through cherry blossom gardens, and experience traditional tea ceremonies in this cultural heart of Japan.", "97%", "https://picsum.photos/id/1015/600/280"),
+        ("Bali, Indonesia", "Relax on pristine beaches, explore lush rice terraces, and find inner peace in spiritual yoga retreats and vibrant Hindu temples.", "92%", "https://picsum.photos/id/1016/600/280"),
+        ("Paris, France", "Stroll along the Seine, admire world-class art in the Louvre, and indulge in exquisite French cuisine and romantic café culture.", "88%", "https://picsum.photos/id/1018/600/280"),
+        ("Santorini, Greece", "Marvel at dramatic cliffside views, watch magical sunsets over the Aegean Sea, and explore white-washed villages.", "91%", "https://picsum.photos/id/102/600/280"),
+        ("Swiss Alps, Switzerland", "Ride scenic trains through majestic mountains, hike pristine trails, and enjoy chocolate and cheese in charming villages.", "85%", "https://picsum.photos/id/103/600/280"),
+        ("Marrakech, Morocco", "Wander bustling souks, experience vibrant markets, and discover riad hotels and desert adventures.", "79%", "https://picsum.photos/id/104/600/280"),
+        ("Banff, Canada", "Discover turquoise lakes, towering peaks, and abundant wildlife in one of the world's most beautiful national parks.", "82%", "https://picsum.photos/id/105/600/280"),
+        ("Barcelona, Spain", "Admire Gaudí’s architectural masterpieces, enjoy tapas and beach life, and soak in Mediterranean energy.", "87%", "https://picsum.photos/id/106/600/280"),
+        ("Queenstown, New Zealand", "Experience adrenaline-pumping adventures like bungee jumping, jet boating, and hiking in stunning fjord landscapes.", "76%", "https://picsum.photos/id/107/600/280"),
+        ("Dubai, UAE", "Explore futuristic architecture, luxury shopping, desert safaris, and world-class entertainment in this modern oasis.", "81%", "https://picsum.photos/id/108/600/280")
     ]
     
     cols = st.columns(2)
@@ -98,8 +98,8 @@ elif page == "Explore":
         with cols[i % 2]:
             st.markdown(f"""
             <div class="destination-card">
-                <img src="{img}" style="width:100%; height:220px; object-fit:cover;">
-                <div style="padding:18px;">
+                <img src="{img}" class="card-image">
+                <div class="card-content">
                     <h3>{name}</h3>
                     <p>{desc}</p>
                     <p><strong>DNA Match: {match}</strong></p>
@@ -108,6 +108,7 @@ elif page == "Explore":
             """, unsafe_allow_html=True)
             
             if st.button(f"🌟 Plan Trip to {name.split(',')[0]}", key=f"plan_{i}"):
-                st.success(f"Generating full itinerary for **{name}** using your Travel DNA...")
+                st.session_state.current_destination = name
+                st.success(f"Creating full personalized itinerary for **{name}**...")
 
 st.caption("Horizon Travel AI • Capstone Demo")
