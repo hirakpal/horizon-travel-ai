@@ -621,6 +621,13 @@ with st.sidebar:
                     font-size:.72rem;color:#64748B">
              Horizon Travel AI · Capstone demo<br>UI shell · mock data mode</div>""",
         unsafe_allow_html=True)
+    
+  rule()
+    st.markdown("### 🛠️ Backend Debug")
+    if "travel_state" in st.session_state:
+        state = st.session_state.travel_state
+        st.json(state.preferences.dict(), expanded=False)
+        st.write(f"**Agent**: {state.active_agent}")
 
 page = st.session_state.current_page
 
