@@ -691,6 +691,15 @@ if page == "Home":
 # CHAT — proactive clarification flow (PRD §2.1)
 # ============================================================================
 elif page == "Chat":
+    # 1. Imports and Initialization (Ensure these are at the top of your file)
+    from agents.extractor import PreferenceExtractorAgent
+    from openai import OpenAI
+    
+    if "openai_client" not in st.session_state:
+        st.session_state.openai_client = OpenAI() # Ensure OPENAI_API_KEY is in your environment
+    if "extractor_agent" not in st.session_state:
+        st.session_state.extractor_agent = PreferenceExtractorAgent(st.session_state.openai_client)
+
     st.markdown("## 💬 Chat with Horizon")
     st.markdown('<p style="color:#94A3B8;margin-top:-.4rem">Describe the trip in your own '
                 "words. Horizon asks targeted questions when critical details are missing — "
@@ -706,73 +715,28 @@ elif page == "Chat":
     if "prefs" not in st.session_state:
         st.session_state.prefs = {"budget": None, "days": None, "month": None, "from": None}
 
-    prefs = st.session_state.prefs
-    MONTHS = ["january", "february", "march", "april", "may", "june", "july",
-              "august", "september", "october", "november", "december"]
-
-    def assistant_reply(text: str) -> dict:
-        t = text.lower()
-        for m in MONTHS:
-            if m in t:
-                prefs["month"] = m.capitalize()
-        if "osaka" in t:
-            prefs["from"] = "Osaka"
-        if "delhi" in t:
-            prefs["from"] = "Delhi"
-        if "mumbai" in t:
-            prefs["from"] = "Mumbai"
-        if " from " in f" {t} " and prefs["from"] is None:
-            prefs["from"] = t.split("from")[-1].strip().split()[0].capitalize()
-        for dest in ITINERARIES:
-            if dest.split(",")[0].lower() in t:
-                st.session_state.current_destination = dest
-        for tok in t.replace(",", " ").split():
-            clean = tok.rstrip("k")
-            if clean.isdigit():
-                n = int(clean)
-                if tok.endswith("k"):
-                    n *= 1000
-                if 1 <= n <= 21 and prefs["days"] is None:
-                    prefs["days"] = n
-                elif n >= 5000 and prefs["budget"] is None:
-                    prefs["budget"] = n
-
-        nice = {"budget": "a rough total budget", "days": "how many days you have",
-                "month": "which month you're travelling", "from": "where you're starting from"}
-        missing = [k for k, v in prefs.items() if v is None]
-        if missing:
-            parts = [nice[m] for m in missing]
-            joined = parts[0] if len(parts) == 1 else ", ".join(parts[:-1]) + " and " + parts[-1]
-            return {"role": "assistant",
-                    "content": f"Got it — I can start sketching, but before I build the full "
-                               f"plan I need {joined}. Two of these change the itinerary shape "
-                               f"completely, so I'd rather ask than guess.",
-                    "options": ["3 days · ₹95k · November · from Osaka",
-                                "5 days · flexible budget · April from Delhi",
-                                "Let me type it out"]}
-
-        dest = st.session_state.current_destination
-        it = get_itinerary(dest)
-        return {"role": "assistant",
-                "content": f"Done — a {len(it['days'])}-day **{dest}** plan built around "
-                           f"your DNA profile. Overall confidence **{it['overall'][0]}%** — "
-                           f"open the **Itinerary** page for the day-by-day, or tell me "
-                           f"what to change.",
-                "conf": it["overall"]}
-
+    # 2. Integration: Updated push_user function
     def push_user(text: str):
         st.session_state.messages.append({"role": "user", "content": text})
+        
+        # New agentic call replaces brittle string matching logic
+        st.session_state.prefs = st.session_state.extractor_agent.extract(
+            text, 
+            st.session_state.prefs
+        )
+        
         st.session_state.messages.append(assistant_reply(text))
 
-    # slot tracker
+    # Keep your existing slot tracker UI
     labels = {"budget": "Budget", "days": "Days", "month": "Month", "from": "From"}
     chips = "".join(
         f'<span class="hz-chip">{labels[k]}: <b>{"₹{:,}".format(v) if k == "budget" else v}</b></span>'
         if v else f'<span class="hz-chip" style="opacity:.45">{labels[k]}: ?</span>'
-        for k, v in prefs.items())
+        for k, v in st.session_state.prefs.items())
     st.markdown(f'<div class="hz-meta" style="margin-bottom:1rem">{chips}</div>',
                 unsafe_allow_html=True)
 
+    # Rendering chat messages
     for i, msg in enumerate(st.session_state.messages):
         with st.chat_message(msg["role"], avatar="🧭" if msg["role"] == "assistant" else None):
             st.markdown(msg["content"])
@@ -783,17 +747,12 @@ elif page == "Chat":
                 for j, (col, opt) in enumerate(zip(cols, msg["options"])):
                     with col:
                         if st.button(opt, key=f"opt-{i}-{j}", width="stretch"):
-                            if opt.startswith("3 days"):
-                                push_user("3 days, 95000 budget, November, from Osaka")
-                                st.rerun()
-                            elif opt.startswith("5 days"):
-                                push_user("5 days in April from Delhi, budget 120000")
-                                st.rerun()
+                            push_user(opt) # Refactored to use the new agentic flow
+                            st.rerun()
 
     if prompt := st.chat_input("e.g. “Kyoto in November — we love food and temples”"):
         push_user(prompt)
         st.rerun()
-
 
 # ============================================================================
 # ITINERARY — destination-aware, rich cards, one-click PDF
