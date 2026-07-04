@@ -94,7 +94,9 @@ class ItineraryArchitectAgent(BaseAgent):
 
         Produce exactly one day entry (n={day_n}) with 3-4 activity segments covering the day
         from morning to evening, with realistic times, costs, walking distances, crowd levels,
-        and transport guidance.
+        and transport guidance. When a meal segment falls in the morning/midday/evening, prefer
+        naming it after one of the real breakfast/lunch/dinner options above (matching by exact
+        name) rather than inventing a restaurant.
         """
         messages = [
             {"role": "system", "content": self.system_prompt},
@@ -109,13 +111,27 @@ class ItineraryArchitectAgent(BaseAgent):
             return ""
         available = [c for c in candidates if c["name"] not in used_names]
         pool = available or candidates  # allow reuse once the whole list has been covered
-        lines = "\n".join(
-            f"- {c['name']}"
-            + (f" ({c['rating']}★)" if c.get("rating") else "")
-            + (f" — {c['address']}" if c.get("address") else "")
-            for c in pool[:12] if c.get("name")
-        )
-        return f"Real places researched for this destination (prefer these by exact name):\n{lines}"
+
+        def fmt(c):
+            bits = [c["name"]]
+            if c.get("rating"):
+                bits.append(f"({c['rating']}★)")
+            if c.get("address"):
+                bits.append(f"— {c['address']}")
+            return " ".join(bits)
+
+        groups = [
+            ("attractions", [c for c in pool if not c.get("meal") and c.get("name")]),
+            ("breakfast", [c for c in pool if c.get("meal") == "breakfast" and c.get("name")]),
+            ("lunch", [c for c in pool if c.get("meal") == "lunch" and c.get("name")]),
+            ("dinner", [c for c in pool if c.get("meal") == "dinner" and c.get("name")]),
+        ]
+        sections = [
+            f"Real {label} options researched for this destination (prefer these by exact name):\n"
+            + "\n".join(f"- {fmt(c)}" for c in items[:8])
+            for label, items in groups if items
+        ]
+        return "\n\n".join(sections)
 
     def _backfill_day(self, day: dict, no_hotel: bool = False) -> dict:
         """Deterministic safety net: LLMs don't reliably fill every optional field
@@ -133,6 +149,10 @@ class ItineraryArchitectAgent(BaseAgent):
         return day
 
     def _fetch_place_candidates(self, destination: str, food_preferences: list) -> list:
+        """Fetches real attractions plus breakfast/lunch/dinner-specific restaurant
+        picks (rather than one generic "restaurants" search), each tagged with a
+        "meal" key so _places_note can present them to the model grouped by meal —
+        real food recommendations for each part of the day, not just attractions."""
         api_key = os.environ.get("GOOGLE_MAPS_API_KEY")
         if not api_key or not destination:
             return []
@@ -149,14 +169,29 @@ class ItineraryArchitectAgent(BaseAgent):
             except Exception:
                 location_bias = None
 
+            cuisine = " ".join((food_preferences or [])).replace("_", " ").strip()
+            cuisine_prefix = f"{cuisine} " if cuisine else ""
+
             attractions = google_maps.text_search_places(
                 f"top tourist attractions in {destination}", api_key, max_results=8,
                 location_bias=location_bias)
-            cuisine = " ".join((food_preferences or [])).replace("_", " ").strip()
-            query = f"best {cuisine} restaurants in {destination}" if cuisine else f"best restaurants in {destination}"
-            restaurants = google_maps.text_search_places(
-                query, api_key, max_results=8, location_bias=location_bias)
-            return attractions + restaurants
+            breakfast = google_maps.text_search_places(
+                f"best breakfast spots in {destination}", api_key, max_results=5,
+                location_bias=location_bias)
+            lunch = google_maps.text_search_places(
+                f"best {cuisine_prefix}lunch restaurants in {destination}", api_key, max_results=5,
+                location_bias=location_bias)
+            dinner = google_maps.text_search_places(
+                f"best {cuisine_prefix}dinner restaurants in {destination}", api_key, max_results=5,
+                location_bias=location_bias)
+
+            for meal_name, meal_candidates in (("breakfast", breakfast), ("lunch", lunch), ("dinner", dinner)):
+                for c in meal_candidates:
+                    c["meal"] = meal_name
+            for c in attractions:
+                c["meal"] = None
+
+            return attractions + breakfast + lunch + dinner
         except Exception:
             return []
 
