@@ -105,30 +105,51 @@ def update_profile(conn: sqlite3.Connection, user_id: int, **fields) -> User:
     return repository.update_profile(conn, user_id, **fields)
 
 
-def sync_travel_dna_into_profile(conn: sqlite3.Connection, user_id: int,
-                                  preferences: TravelPreferences, dna_insights: list) -> User:
-    """Folds a completed trip's structured preferences and free-text DNA
-    insights into the user's stored profile, once there's actually
-    something learned to fold in."""
+def save_completed_trip(conn: sqlite3.Connection, user_id: int, preferences: TravelPreferences,
+                         itinerary_data: Optional[dict], dna_insights: list) -> User:
+    """Persists a completed trip against the user (so Travel DNA survives
+    browser sessions and reflects real trip history), then recomputes the
+    profile's aggregate preferences from that full history."""
+    repository.create_trip(conn, user_id, preferences.model_dump(), itinerary_data, dna_insights)
+    return recompute_profile_from_trip_history(conn, user_id)
+
+
+def recompute_profile_from_trip_history(conn: sqlite3.Connection, user_id: int) -> User:
+    """Folds every trip stored for this user into the profile's food/travel
+    preferences and Travel DNA notes — not just whatever happens to be in
+    the current browser session. Additive: preferences the user typed
+    directly into Profile are never discarded, only added to. Safe to call
+    any time (e.g. a manual "recompute" action); a no-op if there's no trip
+    history yet."""
+    trips = repository.list_trips_for_user(conn, user_id)  # most recent first
     user = repository.get_user_by_id(conn, user_id)
-    if user is None:
-        raise ValueError(f"No user with id {user_id}")
-    profile = user.profile
+    if not trips:
+        return user
 
-    food = list(dict.fromkeys(profile.food_preferences + (preferences.food_preferences or [])))
-    dna_notes = list(dict.fromkeys(profile.travel_dna_notes + (dna_insights or [])))
+    food = list(user.profile.food_preferences)
+    travel_prefs = list(user.profile.travel_preferences)
+    dna_notes = list(user.profile.travel_dna_notes)
+    hotel_tier = None
+    for trip in trips:
+        prefs = trip["preferences"]
+        for f in prefs.get("food_preferences") or []:
+            if f not in food:
+                food.append(f)
+        if prefs.get("fitness_level") and prefs["fitness_level"] not in travel_prefs:
+            travel_prefs.append(prefs["fitness_level"])
+        for mode in prefs.get("transport_modes") or []:
+            tag = f"prefers {mode}"
+            if tag not in travel_prefs:
+                travel_prefs.append(tag)
+        if hotel_tier is None and prefs.get("hotel_type") in HOTEL_TIER_MAP:
+            hotel_tier = HOTEL_TIER_MAP[prefs["hotel_type"]]  # newest-first, so the first hit is most recent
+        for note in trip["dna_insights"] or []:
+            if note not in dna_notes:
+                dna_notes.append(note)
 
-    travel_prefs = list(profile.travel_preferences)
-    if preferences.fitness_level and preferences.fitness_level not in travel_prefs:
-        travel_prefs.append(preferences.fitness_level)
-    for mode in (preferences.transport_modes or []):
-        tag = f"prefers {mode}"
-        if tag not in travel_prefs:
-            travel_prefs.append(tag)
-
-    hotel_prefs = profile.hotel_preferences.model_dump()
-    if preferences.hotel_type in HOTEL_TIER_MAP:
-        hotel_prefs["budget_tier"] = HOTEL_TIER_MAP[preferences.hotel_type]
+    hotel_prefs = user.profile.hotel_preferences.model_dump()
+    if hotel_tier:
+        hotel_prefs["budget_tier"] = hotel_tier
 
     return repository.update_profile(
         conn, user_id,

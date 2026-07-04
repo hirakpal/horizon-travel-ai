@@ -65,5 +65,21 @@ def init_db(conn: sqlite3.Connection) -> None:
         );
 
         CREATE INDEX IF NOT EXISTS idx_reset_tokens_token ON password_reset_tokens(token);
+
+        CREATE TABLE IF NOT EXISTS trips (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL REFERENCES users(id),
+            destination TEXT,
+            origin TEXT,
+            days INTEGER,
+            month TEXT,
+            budget INTEGER,
+            preferences TEXT NOT NULL,
+            itinerary_data TEXT,
+            dna_insights TEXT NOT NULL DEFAULT '[]',
+            created_at TEXT NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_trips_user_id ON trips(user_id);
     """)
     conn.commit()

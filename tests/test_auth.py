@@ -195,7 +195,7 @@ def test_update_profile_partial_update_preserves_untouched_fields(conn):
     assert updated.profile.address == "Mumbai, India"  # newly set
 
 
-def test_sync_travel_dna_into_profile_merges_trip_preferences():
+def test_save_completed_trip_persists_a_trip_row_and_updates_profile():
     from src.models.preferences import TravelPreferences
 
     conn_ = db.get_connection(":memory:")
@@ -203,12 +203,17 @@ def test_sync_travel_dna_into_profile_merges_trip_preferences():
     service.update_profile(conn_, user.id, food_preferences=["vegetarian"])
 
     prefs = TravelPreferences(
-        food_preferences=["non_veg"], hotel_type="luxury",
+        destination="Goa", food_preferences=["non_veg"], hotel_type="luxury",
         fitness_level="moderate", transport_modes=["flight"],
     )
     dna_insights = ["Prefers slow-paced mornings", "Loves street food"]
 
-    updated = service.sync_travel_dna_into_profile(conn_, user.id, prefs, dna_insights)
+    updated = service.save_completed_trip(conn_, user.id, prefs, {"itinerary": []}, dna_insights)
+
+    trips = repository.list_trips_for_user(conn_, user.id)
+    assert len(trips) == 1
+    assert trips[0]["destination"] == "Goa"
+    assert trips[0]["dna_insights"] == dna_insights
 
     assert set(updated.profile.food_preferences) == {"vegetarian", "non_veg"}
     assert updated.profile.hotel_preferences.budget_tier == "high"
@@ -219,7 +224,7 @@ def test_sync_travel_dna_into_profile_merges_trip_preferences():
     conn_.close()
 
 
-def test_sync_travel_dna_is_idempotent_no_duplicate_entries():
+def test_save_completed_trip_twice_does_not_duplicate_entries():
     from src.models.preferences import TravelPreferences
 
     conn_ = db.get_connection(":memory:")
@@ -227,9 +232,60 @@ def test_sync_travel_dna_is_idempotent_no_duplicate_entries():
     prefs = TravelPreferences(food_preferences=["vegetarian"], fitness_level="high")
     dna_insights = ["Enjoys museums"]
 
-    service.sync_travel_dna_into_profile(conn_, user.id, prefs, dna_insights)
-    updated = service.sync_travel_dna_into_profile(conn_, user.id, prefs, dna_insights)
+    service.save_completed_trip(conn_, user.id, prefs, None, dna_insights)
+    updated = service.save_completed_trip(conn_, user.id, prefs, None, dna_insights)
 
-    assert updated.profile.food_preferences.count("vegetarian") == 1
+    assert len(repository.list_trips_for_user(conn_, user.id)) == 2  # two trips recorded...
+    assert updated.profile.food_preferences.count("vegetarian") == 1  # ...but no duplicate preference entries
     assert updated.profile.travel_dna_notes.count("Enjoys museums") == 1
+    conn_.close()
+
+
+def test_recompute_profile_from_trip_history_aggregates_across_multiple_trips():
+    from src.models.preferences import TravelPreferences
+
+    conn_ = db.get_connection(":memory:")
+    user = service.sign_up(conn_, email="multi-trip@example.com", phone=None, password="password123")
+
+    trip1 = TravelPreferences(destination="Goa", food_preferences=["vegetarian"], hotel_type="budget")
+    trip2 = TravelPreferences(destination="Kyoto", food_preferences=["non_veg"], hotel_type="luxury",
+                               transport_modes=["flight"])
+
+    service.save_completed_trip(conn_, user.id, trip1, None, ["Enjoys beaches"])
+    updated = service.save_completed_trip(conn_, user.id, trip2, None, ["Enjoys temples"])
+
+    assert len(repository.list_trips_for_user(conn_, user.id)) == 2
+    # Food preferences accumulate across both trips
+    assert set(updated.profile.food_preferences) == {"vegetarian", "non_veg"}
+    # Hotel tier reflects the MOST RECENT trip (luxury/high), not the first (budget)
+    assert updated.profile.hotel_preferences.budget_tier == "high"
+    assert "prefers flight" in updated.profile.travel_preferences
+    assert set(updated.profile.travel_dna_notes) == {"Enjoys beaches", "Enjoys temples"}
+    conn_.close()
+
+
+def test_recompute_profile_from_trip_history_is_a_no_op_with_no_trips():
+    conn_ = db.get_connection(":memory:")
+    user = service.sign_up(conn_, email="no-trips@example.com", phone=None, password="password123")
+    service.update_profile(conn_, user.id, name="Someone")
+
+    updated = service.recompute_profile_from_trip_history(conn_, user.id)
+
+    assert updated.profile.name == "Someone"
+    assert updated.profile.food_preferences == []
+    conn_.close()
+
+
+def test_list_trips_for_user_orders_most_recent_first():
+    from src.models.preferences import TravelPreferences
+
+    conn_ = db.get_connection(":memory:")
+    user = service.sign_up(conn_, email="ordering@example.com", phone=None, password="password123")
+    service.save_completed_trip(conn_, user.id, TravelPreferences(destination="Goa"), None, [])
+    service.save_completed_trip(conn_, user.id, TravelPreferences(destination="Kyoto"), None, [])
+
+    trips = repository.list_trips_for_user(conn_, user.id)
+
+    assert [t["destination"] for t in trips] == ["Kyoto", "Goa"]
+    conn_.close()
     conn_.close()

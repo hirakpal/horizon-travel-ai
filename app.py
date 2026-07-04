@@ -24,6 +24,7 @@ from src.orchestrator import RootOrchestrator
 from src.models.state import TravelState
 from src.models.preferences import TravelPreferences
 from src.auth import db as auth_db
+from src.auth import repository as auth_repository
 from src.auth import service as auth_service
 from src.auth.service import AuthError
 if "orchestrator" not in st.session_state:
@@ -818,6 +819,20 @@ elif page == "Chat":
 
     state = st.session_state.travel_state
 
+    # Persist a completed trip against the logged-in user, once, so Travel DNA
+    # is built from real trip history rather than just this browser session.
+    # Guarded by the itinerary dict's identity rather than a plain boolean —
+    # a replan swaps in a fresh TravelState (itinerary_data starts at None
+    # again), and a freshly-built itinerary always gets a new dict, so this
+    # naturally fires exactly once per completed trip without needing an
+    # explicit reset anywhere.
+    if (st.session_state.auth_user and state.itinerary_data
+            and st.session_state.get("last_saved_itinerary_id") != id(state.itinerary_data)):
+        st.session_state.auth_user = auth_service.save_completed_trip(
+            st.session_state.auth_conn, st.session_state.auth_user.id,
+            state.preferences, state.itinerary_data, state.dna_insights)
+        st.session_state.last_saved_itinerary_id = id(state.itinerary_data)
+
     stage_labels = {
         "basic_info": "Gathering trip basics",
         "transport": "Transport & return journey",
@@ -1087,19 +1102,22 @@ elif page == "Travel DNA":
     else:
         from src.models.travel_dna import compute_dna_axes, has_learned_dna, learned_preference_rows
         profile = st.session_state.auth_user.profile
+        trip_count = len(auth_repository.list_trips_for_user(st.session_state.auth_conn, st.session_state.auth_user.id))
 
         if not has_learned_dna(profile):
-            st.info("Nothing learned yet. Plan and complete a trip in Chat, then visit your "
-                    "Profile page to sync what Horizon learned about you.")
+            st.info("Nothing learned yet. Plan and complete a trip in Chat — it's saved automatically, "
+                    "and your Travel DNA updates the moment it's built.")
             if st.button("Go to Chat", type="primary"):
                 set_page("Chat")
         else:
             axes = compute_dna_axes(profile)
+            trip_note = f"shaped by {trip_count} completed trip{'s' if trip_count != 1 else ''}" if trip_count \
+                else "built from your Profile preferences"
             left, right = st.columns([3, 2], gap="large")
             with left:
                 st.plotly_chart(dna_radar(axes), width="stretch", config={"displayModeBar": False})
-                st.markdown('<div class="hz-kicker" style="text-align:center">each axis 0–100 · '
-                            "hover for values · built from your synced preferences</div>",
+                st.markdown(f'<div class="hz-kicker" style="text-align:center">each axis 0–100 · '
+                            f"hover for values · {trip_note}</div>",
                             unsafe_allow_html=True)
             with right:
                 st.markdown("#### Learned preferences")
@@ -1399,22 +1417,23 @@ elif page == "Profile":
 
         rule()
         st.markdown("#### 🧬 Travel DNA")
+        trip_count = len(auth_repository.list_trips_for_user(conn, user.id))
+        if trip_count:
+            st.caption(f"Built from {trip_count} completed trip{'s' if trip_count != 1 else ''}.")
         if profile.travel_dna_notes:
             for note in profile.travel_dna_notes:
                 st.markdown(f"- {note}")
         else:
             st.caption("No Travel DNA insights learned yet — plan a trip in Chat to start building one.")
 
-        travel_state = st.session_state.get("travel_state")
-        has_learnings = travel_state and (travel_state.dna_insights or travel_state.itinerary_data)
-        if has_learnings:
-            if st.button("🔄 Sync Travel DNA from my latest trip"):
-                updated = auth_service.sync_travel_dna_into_profile(
-                    conn, user.id, travel_state.preferences, travel_state.dna_insights)
+        if trip_count:
+            if st.button("🔄 Recompute Travel DNA from my trip history"):
+                updated = auth_service.recompute_profile_from_trip_history(conn, user.id)
                 st.session_state.auth_user = updated
-                st.success("Profile updated with insights from your latest trip!")
+                st.success("Profile recomputed from your trip history!")
                 st.rerun()
         else:
-            st.caption("Plan and complete a trip in Chat, then come back here to sync what Horizon learned.")
+            st.caption("Plan and complete a trip in Chat — it's saved automatically, and your Travel "
+                       "DNA updates the moment it's built.")
 
 st.caption("Horizon Travel AI • Capstone Demo")
