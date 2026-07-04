@@ -133,3 +133,41 @@ def get_valid_reset_token_user_id(conn: sqlite3.Connection, token: str) -> Optio
 def mark_token_used(conn: sqlite3.Connection, token: str) -> None:
     conn.execute("UPDATE password_reset_tokens SET used = 1 WHERE token = ?", (token,))
     conn.commit()
+
+
+def create_trip(conn: sqlite3.Connection, user_id: int, preferences: dict,
+                 itinerary_data: Optional[dict], dna_insights: list) -> int:
+    """Persists a completed trip's preferences/itinerary/DNA insights against
+    the user, so Travel DNA can be built from real trip history rather than
+    just whatever's in the current browser session."""
+    cursor = conn.execute(
+        """INSERT INTO trips (user_id, destination, origin, days, month, budget,
+           preferences, itinerary_data, dna_insights, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            user_id, preferences.get("destination"), preferences.get("origin"),
+            preferences.get("days"), preferences.get("month"), preferences.get("budget"),
+            json.dumps(preferences), json.dumps(itinerary_data) if itinerary_data else None,
+            json.dumps(dna_insights or []), _now(),
+        ),
+    )
+    conn.commit()
+    return cursor.lastrowid
+
+
+def list_trips_for_user(conn: sqlite3.Connection, user_id: int) -> list:
+    """Most recent first."""
+    rows = conn.execute(
+        "SELECT * FROM trips WHERE user_id = ? ORDER BY id DESC", (user_id,)
+    ).fetchall()
+    return [
+        {
+            "id": row["id"], "destination": row["destination"], "origin": row["origin"],
+            "days": row["days"], "month": row["month"], "budget": row["budget"],
+            "preferences": json.loads(row["preferences"]),
+            "itinerary_data": json.loads(row["itinerary_data"]) if row["itinerary_data"] else None,
+            "dna_insights": json.loads(row["dna_insights"]),
+            "created_at": row["created_at"],
+        }
+        for row in rows
+    ]
