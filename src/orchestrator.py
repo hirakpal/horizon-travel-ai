@@ -17,29 +17,29 @@ class RootOrchestrator:
     def process_turn(self, state: TravelState, user_input: str) -> str:
         # 1. Extraction: Always update state with user input
         extraction_result = self.extractor.run(state, user_input)
-        state.preferences = state.preferences.model_copy(update=extraction_result)
+        
+        # Merge extraction into existing preferences
+        updated_data = state.preferences.model_dump()
+        updated_data.update({k: v for k, v in extraction_result.items() if v is not None})
+        state.preferences = TravelPreferences(**updated_data)
         
         # Add user input to history
         state.messages.append({"role": "user", "content": user_input})
 
-        # 2. Orchestration Logic
-        is_ready = all([state.preferences.destination, state.preferences.days, state.preferences.budget])
+        # 2. Orchestration Logic - EXPLICITLY check all required fields
+        p = state.preferences
+        is_ready = all([p.destination, p.days, p.budget, p.month, p.origin])
 
         if is_ready:
             # Trigger Architect
             architect_result = self.architect.run(state, user_input)
             
-            # Robust JSON extraction
             import re
-            # Try to find JSON block; if not, treat whole string as potential JSON
             match = re.search(r'\{.*\}', architect_result['itinerary'], re.DOTALL)
             if match:
                 state.itinerary_data = json.loads(match.group(0))
                 state.active_agent = "Architect"
-                
-                # HAND-OFF: Trigger DNA Learner
                 self.learner.run(state, user_input, plan=state.itinerary_data)
-                
                 response = "I've built your itinerary! Check the Itinerary tab to see it."
             else:
                 response = "I created a plan, but I'm having trouble displaying it."
@@ -48,23 +48,13 @@ class RootOrchestrator:
             state.active_agent = "Concierge"
             concierge_result = self.concierge.run(state, user_input)
             
-            # Clean Concierge response: extract string if it's a dict
-            if isinstance(concierge_result, dict) and "reply" in concierge_result:
-                response = concierge_result["reply"]
-            elif isinstance(concierge_result, str):
-                try:
-                    data = json.loads(concierge_result)
-                    response = data.get("reply", concierge_result)
-                except:
-                    response = concierge_result
+            # Extract reply text safely
+            if isinstance(concierge_result, dict):
+                response = concierge_result.get("reply", str(concierge_result))
             else:
                 response = str(concierge_result)
 
-        # Ensure newlines are clean for UI rendering
+        # Final cleanup and return
         clean_response = response.replace('\\n', '\n')
-        
         state.messages.append({"role": "assistant", "content": clean_response})
         return clean_response
-
-        state.messages.append({"role": "assistant", "content": response})
-        return response
