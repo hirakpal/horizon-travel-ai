@@ -16,7 +16,7 @@ class PreferenceExtractionAgent(BaseAgent):
         structured_llm = self.llm.with_structured_output(TravelPreferences)
         
         # Prepare the current state as context for the model
-        current_prefs_json = state.preferences.json()
+        current_prefs_json = state.preferences.model_dump_json()
         
         # Call the LLM to extract new data
         updated_prefs = structured_llm.invoke(
