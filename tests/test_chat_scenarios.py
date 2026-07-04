@@ -157,6 +157,7 @@ def test_scenario_piecemeal_info_full_happy_path():
 
         with patch.object(orchestrator.architect, "run",
                            return_value={"itinerary": realistic_itinerary(days=4)}), \
+             patch.object(orchestrator.validator, "run", return_value={"confidence_score": 95, "issues": []}), \
              patch.object(orchestrator.learner, "run", return_value={"dna_insights": []}):
             r8 = orchestrator.process_turn(state, "yes let's do it")
 
@@ -274,6 +275,7 @@ def test_scenario_confirmation_phrasing_variety():
         _set_ready_to_plan_state(state)
         with patch.object(orchestrator.architect, "run",
                            return_value={"itinerary": realistic_itinerary(days=2)}), \
+             patch.object(orchestrator.validator, "run", return_value={"confidence_score": 95, "issues": []}), \
              patch.object(orchestrator.learner, "run", return_value={"dna_insights": []}):
             response = orchestrator.process_turn(state, phrase)
         assert state.itinerary_data is not None, f"failed to confirm on: {phrase!r}"
@@ -324,6 +326,7 @@ def test_scenario_tight_budget_shows_alert_but_user_can_still_proceed():
     # User proceeds anyway
     with patch.object(orchestrator.architect, "run",
                        return_value={"itinerary": realistic_itinerary(days=10)}), \
+         patch.object(orchestrator.validator, "run", return_value={"confidence_score": 95, "issues": []}), \
          patch.object(orchestrator.learner, "run", return_value={"dna_insights": []}):
         response2 = orchestrator.process_turn(state, "yes, proceed anyway")
     assert state.itinerary_data is not None
@@ -366,6 +369,7 @@ def test_scenario_replan_after_completed_itinerary_starts_a_clean_second_trip():
     _set_ready_to_plan_state(state)
     with patch.object(orchestrator.architect, "run",
                        return_value={"itinerary": realistic_itinerary(days=3)}), \
+         patch.object(orchestrator.validator, "run", return_value={"confidence_score": 95, "issues": []}), \
          patch.object(orchestrator.learner, "run", return_value={"dna_insights": []}):
         orchestrator.process_turn(state, "yes")
     assert state.itinerary_data is not None
@@ -455,6 +459,7 @@ def test_scenario_itinerary_build_failure_then_successful_retry():
 
     with patch.object(orchestrator.architect, "run",
                        return_value={"itinerary": realistic_itinerary(days=3)}), \
+         patch.object(orchestrator.validator, "run", return_value={"confidence_score": 95, "issues": []}), \
          patch.object(orchestrator.learner, "run", return_value={"dna_insights": []}):
         r2 = orchestrator.process_turn(state, "yes, try again")
     assert state.itinerary_data is not None

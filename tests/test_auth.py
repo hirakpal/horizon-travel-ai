@@ -288,4 +288,42 @@ def test_list_trips_for_user_orders_most_recent_first():
 
     assert [t["destination"] for t in trips] == ["Kyoto", "Goa"]
     conn_.close()
+
+
+def test_delete_account_removes_user_and_all_their_data():
+    from src.models.preferences import TravelPreferences
+
+    conn_ = db.get_connection(":memory:")
+    user = service.sign_up(conn_, email="delete-me@example.com", phone=None, password="password123")
+    service.save_completed_trip(conn_, user.id, TravelPreferences(destination="Goa"), None, ["Loves beaches"])
+    result = service.request_password_reset(conn_, "delete-me@example.com")
+    assert result["found"] is True  # sanity: a reset token row now exists too
+
+    service.delete_account(conn_, user.id)
+
+    assert repository.get_user_by_id(conn_, user.id) is None
+    assert repository.get_user_by_email(conn_, "delete-me@example.com") is None
+    assert repository.list_trips_for_user(conn_, user.id) == []
+    assert repository.get_valid_reset_token_user_id(conn_, result["dev_token"]) is None
+    conn_.close()
+
+
+def test_delete_account_only_removes_the_target_user():
+    conn_ = db.get_connection(":memory:")
+    user_a = service.sign_up(conn_, email="keep-me@example.com", phone=None, password="password123")
+    user_b = service.sign_up(conn_, email="delete-me-too@example.com", phone=None, password="password123")
+
+    service.delete_account(conn_, user_b.id)
+
+    assert repository.get_user_by_id(conn_, user_a.id) is not None
+    assert repository.get_user_by_id(conn_, user_b.id) is None
+    conn_.close()
+
+
+def test_login_fails_after_account_deletion():
+    conn_ = db.get_connection(":memory:")
+    user = service.sign_up(conn_, email="gone@example.com", phone=None, password="password123")
+    service.delete_account(conn_, user.id)
+
+    assert service.login(conn_, "gone@example.com", "password123") is None
     conn_.close()

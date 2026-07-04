@@ -665,6 +665,8 @@ if "reset_identifier" not in st.session_state:
     st.session_state.reset_identifier = None
 if "reset_dev_token" not in st.session_state:
     st.session_state.reset_dev_token = None
+if "flash_message" not in st.session_state:
+    st.session_state.flash_message = None
 
 
 def set_page(p: str):
@@ -1020,6 +1022,18 @@ elif page == "Itinerary":
             st.write(f"🛫 Outbound: {ts.preferences.checkin_advice}")
         if ts.preferences.return_checkin_advice:
             st.write(f"🛬 Return: {ts.preferences.return_checkin_advice}")
+
+        # The Architect's plan is fact-checked by a Validator agent before it
+        # ever reaches this page (see orchestrator._build_and_validate_itinerary) —
+        # surface that review here rather than presenting the plan as unquestioned.
+        validation = it.get("validation")
+        if validation:
+            st.markdown(f"**Itinerary review:** {conf_badge_html(validation['confidence_score'])}",
+                        unsafe_allow_html=True)
+            if validation.get("issues"):
+                with st.expander("What our reviewer flagged"):
+                    for issue in validation["issues"]:
+                        st.markdown(f"- {issue}")
         rule()
 
         # Real place photo / Street View imagery — only attempted when a Google
@@ -1190,6 +1204,10 @@ elif page == "Login":
              <p style="color:#94A3B8">Sign in to pick up your trip planning, saved preferences, and Travel DNA.</p>
            </div>""", unsafe_allow_html=True)
     rule()
+
+    if st.session_state.flash_message:
+        st.success(st.session_state.flash_message)
+        st.session_state.flash_message = None
 
     _, col_mid, _ = st.columns([1, 1.3, 1])
     with col_mid:
@@ -1435,5 +1453,17 @@ elif page == "Profile":
         else:
             st.caption("Plan and complete a trip in Chat — it's saved automatically, and your Travel "
                        "DNA updates the moment it's built.")
+
+        rule()
+        st.markdown("#### ⚠️ Danger Zone")
+        st.caption("Permanently delete your account, profile, trip history, and Travel DNA. "
+                   "This cannot be undone.")
+        confirm_delete = st.checkbox("I understand this is permanent and cannot be undone.",
+                                      key="confirm_delete_account")
+        if st.button("🗑️ Delete My Account", disabled=not confirm_delete):
+            auth_service.delete_account(conn, user.id)
+            st.session_state.auth_user = None
+            st.session_state.flash_message = "Your account and all its data have been deleted."
+            set_page("Login")
 
 st.caption("Horizon Travel AI • Capstone Demo")

@@ -9,8 +9,15 @@ from src.agents.extractor import PreferenceExtractionAgent
 from src.agents.architect import ItineraryArchitectAgent
 from src.agents.dna_learner import DNALearnerAgent
 from src.agents.transport_suggestions import TransportSuggestionsAgent
+from src.agents.validator import ItineraryValidationAgent
 
 BASIC_FIELDS = ["origin", "destination", "days", "budget"]
+
+# The Architect's itinerary is fact-checked by the Validator before being shown
+# to the user; below this confidence score, its feedback is fed back into
+# another build attempt rather than shipping a shaky plan silently.
+VALIDATION_CONFIDENCE_THRESHOLD = 80
+MAX_VALIDATION_ATTEMPTS = 5
 
 ARRIVAL_TIME_CHOICES = [
     ("late_evening", ("late evening", "late-evening")),
@@ -131,6 +138,7 @@ class RootOrchestrator:
         self.architect = ItineraryArchitectAgent()
         self.learner = DNALearnerAgent()
         self.transport = TransportSuggestionsAgent()
+        self.validator = ItineraryValidationAgent()
 
     # ------------------------------------------------------------------
     # Helpers
@@ -618,8 +626,7 @@ class RootOrchestrator:
     def _build_itinerary(self, state: TravelState, user_input: str) -> str:
         state.active_agent = "Architect"
         try:
-            architect_result = self.architect.run(state, user_input)
-            itinerary_data = architect_result.get("itinerary")
+            itinerary_data = self._build_and_validate_itinerary(state, user_input)
             if itinerary_data and itinerary_data.get("itinerary"):
                 state.itinerary_data = itinerary_data
                 self.learner.run(state, user_input, plan=state.itinerary_data)
@@ -629,3 +636,39 @@ class RootOrchestrator:
         except Exception:
             return ("I ran into an issue while building your itinerary. Please try again in a "
                     "moment, or let me know if you'd like to adjust any details first.")
+
+    def _build_and_validate_itinerary(self, state: TravelState, user_input: str) -> dict:
+        """Builds the itinerary, then runs it through the Validator for a fact
+        and consistency check. Below-threshold issues are fed back into another
+        Architect attempt (up to MAX_VALIDATION_ATTEMPTS) rather than shipping
+        a shaky plan silently. Always returns the best-scoring attempt seen,
+        even if none crossed the threshold — a validator hiccup (e.g. the LLM
+        call itself fails) counts as a pass rather than discarding a
+        perfectly-built itinerary over a review-step outage."""
+        best_itinerary, best_validation = None, None
+        feedback = None
+
+        for attempt in range(1, MAX_VALIDATION_ATTEMPTS + 1):
+            architect_result = self.architect.run(state, user_input, feedback=feedback)
+            itinerary_data = architect_result.get("itinerary")
+            if not itinerary_data or not itinerary_data.get("itinerary"):
+                continue
+
+            try:
+                validation_result = self.validator.run(state, "", itinerary_plan=itinerary_data)
+                confidence_score = validation_result.get("confidence_score", 0)
+                issues = validation_result.get("issues", [])
+            except Exception:
+                confidence_score, issues = 100, []
+
+            validation = {"confidence_score": confidence_score, "issues": issues, "attempts": attempt}
+            if best_validation is None or confidence_score > best_validation["confidence_score"]:
+                best_itinerary, best_validation = itinerary_data, validation
+
+            if confidence_score >= VALIDATION_CONFIDENCE_THRESHOLD:
+                break
+            feedback = "; ".join(issues) or None
+
+        if best_itinerary is not None:
+            best_itinerary["validation"] = best_validation
+        return best_itinerary

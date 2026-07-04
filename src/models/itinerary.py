@@ -32,3 +32,15 @@ class ItineraryDay(BaseModel):
 
 class ItineraryPlan(BaseModel):
     itinerary: List[ItineraryDay] = Field(default_factory=list)
+
+
+class ItineraryValidationResult(BaseModel):
+    confidence_score: int = Field(
+        description="0-100 confidence that this itinerary is factually sound, internally "
+                    "consistent, and matches the traveler's stated preferences")
+    issues: List[str] = Field(
+        default_factory=list,
+        description="Specific, concrete problems found (e.g. unrealistic costs, illogical "
+                    "sequencing/timing, a meal segment that violates the stated food preference, "
+                    "pacing that doesn't fit the traveler's fitness level, a place that doesn't "
+                    "plausibly exist in this destination). Empty if none found.")

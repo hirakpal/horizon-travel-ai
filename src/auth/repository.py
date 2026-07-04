@@ -171,3 +171,13 @@ def list_trips_for_user(conn: sqlite3.Connection, user_id: int) -> list:
         }
         for row in rows
     ]
+
+
+def delete_user(conn: sqlite3.Connection, user_id: int) -> None:
+    """Permanently removes this user's account and every row tied to it
+    (trips, reset tokens). Irreversible — callers must confirm with the user
+    before calling this."""
+    conn.execute("DELETE FROM trips WHERE user_id = ?", (user_id,))
+    conn.execute("DELETE FROM password_reset_tokens WHERE user_id = ?", (user_id,))
+    conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
+    conn.commit()
