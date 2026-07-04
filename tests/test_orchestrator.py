@@ -59,6 +59,26 @@ def test_full_stage_progression_to_ready_to_plan():
         assert "build your itinerary" in r3.lower()
 
 
+def test_arrival_time_keyword_match_skips_extractor_call():
+    """A recognized answer (e.g. 'early morning') must not trigger an extra,
+    redundant LLM extraction call in the same turn — only the transport search
+    LLM call should fire. Two sequential LLM round trips on this turn was the
+    cause of the reported "chat closes after entering arrival time" hang."""
+    orchestrator = _orchestrator()
+    state = TravelState(session_id="test")
+    state.preferences.origin = "Mumbai"
+    state.preferences.destination = "Goa"
+    state.preferences.days = 3
+    state.preferences.budget = 100000
+
+    with patch.object(orchestrator.extractor, "run") as mock_extract, \
+         patch.object(orchestrator.transport, "run", side_effect=Exception("no llm")):
+        orchestrator.process_turn(state, "early morning please")
+
+    mock_extract.assert_not_called()
+    assert state.preferences.arrival_time == "early_morning"
+
+
 def test_ready_to_plan_budget_alert():
     orchestrator = _orchestrator()
     state = TravelState(session_id="test")
