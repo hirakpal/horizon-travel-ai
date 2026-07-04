@@ -31,14 +31,26 @@ class RootOrchestrator:
         if is_ready:
             # Trigger Architect
             architect_result = self.architect.run(state, user_input)
+            raw_response = architect_result['itinerary']
             
-            # Clean and parse the response
-            raw_json = architect_result['itinerary'].replace("```json", "").replace("```", "").strip()
-            state.itinerary_data = json.loads(raw_json)
+            # 1. More robust extraction: find the first '{' and last '}'
+            try:
+                start = raw_response.find('{')
+                end = raw_response.rfind('}') + 1
+                if start == -1 or end == 0:
+                    raise ValueError("No JSON found in response")
+                
+                clean_json = raw_response[start:end]
+                state.itinerary_data = json.loads(clean_json)
+                state.active_agent = "Architect"
+                response = "I've built your itinerary! Check the Itinerary tab to see it."
+                
+            except Exception as e:
+                # Fallback if parsing fails
+                print(f"DEBUG: JSON Parse Error: {e}. Raw response: {raw_response}")
+                response = "I created a plan, but I'm having trouble displaying it. Please try asking again."
             
-            response = "I've built your itinerary! Check the Itinerary tab to see it."
-            
-            # Trigger DNA Learner
+            # Trigger DNA Learner in the background
             self.learner.run(state, user_input)
         else:
             # Trigger Concierge to ask for missing pieces
