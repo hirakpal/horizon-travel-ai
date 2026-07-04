@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from typing import List, Dict, Any
-from .preferences import TravelPreferences
+from src.models.preferences import TravelPreferences
 
 class TravelState(BaseModel):
     messages: List[Dict[str, str]] = []  # History of the chat
