@@ -1,39 +1,26 @@
-# agents/extractor.py
 import json
+import os
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
+from openai import OpenAI
 
-# 1. Define the schema for structured extraction
+# 1. Schema remains the same
 class TripPreferencesSchema(BaseModel):
-    budget: Optional[int] = Field(
-        default=None, 
-        description="Total budget for the trip in INR. Convert shorthand like '95k' to 95000."
-    )
-    days: Optional[int] = Field(
-        default=None, 
-        description="Number of days for the trip. Must be an integer."
-    )
-    month: Optional[str] = Field(
-        default=None, 
-        description="Month of travel (e.g., 'November', 'April')."
-    )
-    origin: Optional[str] = Field(
-        default=None, 
-        description="City of origin (e.g., 'Osaka', 'Delhi')."
-    )
+    budget: Optional[int] = Field(default=None, description="Total budget in INR.")
+    days: Optional[int] = Field(default=None, description="Trip duration in days.")
+    month: Optional[str] = Field(default=None, description="Month of travel.")
+    origin: Optional[str] = Field(default=None, description="City of origin.")
 
 class PreferenceExtractorAgent:
-    def __init__(self, llm_client):
-        """
-        Initializes the agent with an OpenAI client instance.
-        """
-        self.client = llm_client
-        self.model = "gpt-5.5"
+    def __init__(self):
+        # Initialize client pointing to OpenRouter
+        self.client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=os.getenv("OPENROUTER_API_KEY"),
+        )
+        self.model = "openai/gpt-5.5"
 
     def extract(self, user_message: str, current_prefs: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Extracts preferences using GPT-4o function calling.
-        """
         tools = [{
             "type": "function",
             "function": {
@@ -43,31 +30,29 @@ class PreferenceExtractorAgent:
             }
         }]
 
-        system_prompt = (
-            "You are the Horizon Preference Extraction Agent. "
-            "Extract trip constraints strictly. Do not guess values. "
-            "Current preferences: " + json.dumps(current_prefs)
-        )
+        # OpenRouter-specific headers for attribution
+        extra_headers = {
+            "HTTP-Referer": "http://localhost:8501", # Your Streamlit URL
+            "X-Title": "Horizon Travel AI"
+        }
 
         response = self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": system_prompt},
+                {"role": "system", "content": "You are Horizon's preference extractor. Extract constraints strictly."},
                 {"role": "user", "content": user_message}
             ],
             tools=tools,
-            tool_choice={"type": "function", "function": {"name": "extract_trip_preferences"}}
+            tool_choice={"type": "function", "function": {"name": "extract_trip_preferences"}},
+            extra_headers=extra_headers
         )
 
-        # Parse the tool call
         tool_call = response.choices[0].message.tool_calls[0]
         extracted_data = json.loads(tool_call.function.arguments)
 
-        # Align 'origin' with UI's 'from' key
         if "origin" in extracted_data:
             extracted_data["from"] = extracted_data.pop("origin")
 
-        # Merge results
         updated_prefs = {**current_prefs}
         for key, value in extracted_data.items():
             if value is not None:
