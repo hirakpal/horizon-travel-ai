@@ -624,7 +624,7 @@ with st.sidebar:
     st.markdown("### 🛠️ Backend Debug")
     if "travel_state" in st.session_state:
         state = st.session_state.travel_state
-        st.json(state.preferences.dict(), expanded=False)
+        st.json(state.preferences.model_dump(), expanded=False)
         st.write(f"**Agent**: {state.active_agent}")
 
 page = st.session_state.current_page
