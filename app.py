@@ -706,9 +706,16 @@ if page == "Chat":
 
     def push_user(text: str):
         st.session_state.messages.append({"role": "user", "content": text})
-        # Use the agent
-        st.session_state.prefs = st.session_state.extractor_agent.extract(text, st.session_state.prefs)
-        st.session_state.messages.append({"role": "assistant", "content": "Updated preferences."})
+        
+        try:
+            # Attempt to extract preferences
+            updated_prefs = st.session_state.extractor_agent.extract(text, st.session_state.prefs)
+            st.session_state.prefs = updated_prefs
+            st.session_state.messages.append(assistant_reply(text))
+        except Exception as e:
+            # If the API fails, catch it and show an error message in the chat
+            st.error(f"Agent Error: {str(e)}")
+            st.session_state.messages.append({"role": "assistant", "content": "I'm having trouble connecting to my brain right now. Please check your API credits."})
 
     # Display Chips
     labels = {"budget": "Budget", "days": "Days", "month": "Month", "from": "From"}
