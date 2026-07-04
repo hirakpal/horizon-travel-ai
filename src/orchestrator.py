@@ -28,25 +28,29 @@ class RootOrchestrator:
 
         # 2. Orchestration Logic - EXPLICITLY check all required fields
         p = state.preferences
-        is_ready = all([p.destination, p.days, p.budget, p.month, p.origin])
+        is_ready = all([state.preferences.destination, state.preferences.days, state.preferences.budget])
 
         if is_ready:
             # Trigger Architect
+            state.active_agent = "Architect"
             architect_result = self.architect.run(state, user_input)
-            
+                        
             import re
             match = re.search(r'\{.*\}', architect_result['itinerary'], re.DOTALL)
             if match:
                 state.itinerary_data = json.loads(match.group(0))
-                state.active_agent = "Architect"
+                # HAND-OFF: Trigger DNA Learner
                 self.learner.run(state, user_input, plan=state.itinerary_data)
-                response = "I've built your itinerary! Check the Itinerary tab to see it."
+                self.learner.run(state, user_input, plan=state.itinerary_data)
+                # Keep the chat response brief
+                response = "I've built the perfect itinerary for your trip! Please head over to the **Itinerary** tab to view your day-by-day plan."
             else:
-                response = "I created a plan, but I'm having trouble displaying it."
+                response = "I've finalized your travel plan. Please check the Itinerary tab to view it."
         else:
-            # Fallback to Concierge
+            # Fallback to Concierge ONLY if not ready
             state.active_agent = "Concierge"
             concierge_result = self.concierge.run(state, user_input)
+            response = concierge_result.get("reply", str(concierge_result))
             
             # Extract reply text safely
             if isinstance(concierge_result, dict):
