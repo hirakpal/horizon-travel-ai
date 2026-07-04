@@ -18,7 +18,7 @@ class RootOrchestrator:
         
         # Add user input to history
         state.messages.append({"role": "user", "content": user_input})
-        
+        print(f"DEBUG: Current State Preferences: {state.preferences.dict()}")
         # 2. Routing Logic
         # Check if we have enough info to build an itinerary
         # We check if destination, days, and budget are set
