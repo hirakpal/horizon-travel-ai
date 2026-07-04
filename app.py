@@ -19,6 +19,7 @@ import plotly.graph_objects as go
 import streamlit as st
 from fpdf import FPDF
 from openai import OpenAI
+from agents.extractor import PreferenceExtractorAgent
 # ============================================================================
 # Design tokens — slate night + sunset (coral → amber)
 # ============================================================================
