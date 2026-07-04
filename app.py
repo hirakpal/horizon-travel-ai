@@ -622,7 +622,7 @@ with st.sidebar:
              Horizon Travel AI · Capstone demo<br>UI shell · mock data mode</div>""",
         unsafe_allow_html=True)
     
-  rule()
+    rule()
     st.markdown("### 🛠️ Backend Debug")
     if "travel_state" in st.session_state:
         state = st.session_state.travel_state
