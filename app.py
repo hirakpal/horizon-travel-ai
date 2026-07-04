@@ -20,6 +20,12 @@ import streamlit as st
 from fpdf import FPDF
 import sys
 import os
+from src.orchestrator import RootOrchestrator
+from src.models.state import TravelState
+if "orchestrator" not in st.session_state:
+    st.session_state.orchestrator = RootOrchestrator()
+if "travel_state" not in st.session_state:
+    st.session_state.travel_state = TravelState(session_id="hirak_001")
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # ============================================================================
 # Design tokens — slate night + sunset (coral → amber)
@@ -739,7 +745,9 @@ elif page == "Itinerary":
     st.markdown("## 📍 Your AI-Generated Itinerary")
     
     # Check if the Architect has populated the state
-    if "itinerary_data" not in st.session_state.travel_state.__dict__ or not st.session_state.travel_state.itinerary_data:
+    # Safely access state
+    ts = st.session_state.get("travel_state")
+    if not ts or not getattr(ts, "itinerary_data", None):
         st.info("Your itinerary is still being planned. Please complete your chat request first!")
     else:
         it = st.session_state.travel_state.itinerary_data
