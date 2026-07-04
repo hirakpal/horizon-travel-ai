@@ -165,6 +165,35 @@ def test_resolve_place_id_returns_none_when_nothing_matches():
         assert google_maps.resolve_place_id("asdkjaskdjaskd", api_key="test-key") is None
 
 
+def test_fetch_trip_static_map_labels_each_point_and_returns_bytes():
+    points = [{"lat": 22.57, "lng": 88.36}, {"lat": 22.58, "lng": 88.37}]
+    with patch.object(google_maps.requests, "get",
+                       return_value=_mock_response(content=b"fakepngbytes")) as mock_get:
+        image_bytes = google_maps.fetch_trip_static_map(points, api_key="test-key")
+
+    assert image_bytes == b"fakepngbytes"
+    params = mock_get.call_args.kwargs["params"]
+    markers = [v for k, v in params if k == "markers"]
+    assert markers == ["label:1|22.57,88.36", "label:2|22.58,88.37"]
+    assert ("key", "test-key") in params
+
+
+def test_fetch_trip_static_map_returns_none_for_no_points():
+    assert google_maps.fetch_trip_static_map([], api_key="test-key") is None
+
+
+def test_fetch_trip_static_map_reuses_last_label_beyond_alphabet():
+    points = [{"lat": i, "lng": i} for i in range(40)]
+    with patch.object(google_maps.requests, "get",
+                       return_value=_mock_response(content=b"x")) as mock_get:
+        google_maps.fetch_trip_static_map(points, api_key="test-key")
+
+    params = mock_get.call_args.kwargs["params"]
+    markers = [v for k, v in params if k == "markers"]
+    assert len(markers) == 40
+    assert markers[-1].startswith("label:Z|")  # last unique label, reused for the overflow
+
+
 def test_api_errors_propagate_for_caller_to_handle():
     """These wrapper functions must raise on failure, not swallow errors — the
     orchestrator/architect layer is responsible for the try/except fallback,

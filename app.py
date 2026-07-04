@@ -471,27 +471,6 @@ def get_itinerary(dest: str) -> dict:
     return ITINERARIES.get(dest) or generic_itinerary(dest)
 
 
-DNA_AXES = {"Adventure": 72, "Culture": 94, "Food": 88, "Photography": 95,
-            "Relax": 68, "Walking": 81, "Nightlife": 34}
-
-DNA_PREFS = [
-    ("cuisines", "Japanese · Thai · South Indian"),
-    ("hotel style", "Boutique, design-forward — twin, high floor"),
-    ("flying", "ANA / Vistara · window seat"),
-    ("visa history", "Japan (2024) · Thailand (2023) · Schengen (2022)"),
-    ("loved before", "Fushimi Inari · Wat Arun · Sagrada Família"),
-]
-
-DNA_EVENTS = [
-    ("03 Jul · 14:20", "Photography", "Photography 91 → 95",
-     "You asked for golden-hour slots at three viewpoints in one session"),
-    ("03 Jul · 11:05", "Food", "Food 84 → 88",
-     "Accepted the standing-bar izakaya over the hotel restaurant"),
-    ("01 Jul · 18:40", "Culture", "Culture 90 → 94",
-     "Extended the temple loop twice on the last trip"),
-    ("28 Jun · 09:15", "Walking", "Walking 85 → 81",
-     "Trimmed the 14 km loop to 9 km on day 2 — pace preference updated"),
-]
 
 
 # ============================================================================
@@ -539,6 +518,18 @@ def cached_street_view(lat: float, lng: float, api_key: str):
         return None
 
 
+@st.cache_data(show_spinner=False, ttl=3600)
+def cached_trip_map(points: tuple, api_key: str):
+    """points is a tuple of (lat, lng) tuples — st.cache_data needs a hashable
+    argument, which a list of dicts isn't."""
+    from src.tools import google_maps
+    try:
+        return google_maps.fetch_trip_static_map(
+            [{"lat": lat, "lng": lng} for lat, lng in points], api_key)
+    except Exception:
+        return None
+
+
 def segment_card(s: dict, currency: str, key: str):
     chips = []
     if s["walk"]:
@@ -577,9 +568,9 @@ def stat(value: str, label: str):
                 f'<div class="l">{label}</div></div>', unsafe_allow_html=True)
 
 
-def dna_radar() -> go.Figure:
-    labels = list(DNA_AXES) + [list(DNA_AXES)[0]]
-    values = list(DNA_AXES.values()) + [list(DNA_AXES.values())[0]]
+def dna_radar(axes: dict) -> go.Figure:
+    labels = list(axes) + [list(axes)[0]]
+    values = list(axes.values()) + [list(axes.values())[0]]
     fig = go.Figure(go.Scatterpolar(
         r=values, theta=labels, fill="toself",
         fillcolor="rgba(255,107,107,0.22)",
@@ -1023,6 +1014,22 @@ elif page == "Itinerary":
         # Google API for images already fetched this session.
         google_api_key = os.environ.get("GOOGLE_MAPS_API_KEY")
 
+        # Whole-trip map — one image with a numbered marker per grounded segment
+        # (in day/time order), so the traveler can see the whole trip laid out
+        # geographically at a glance rather than piecing it together day by day.
+        if google_api_key:
+            trip_points = tuple(
+                (seg["lat"], seg["lng"])
+                for day in days for seg in day.get("segments", [])
+                if seg.get("lat") is not None and seg.get("lng") is not None
+            )[:20]
+            if trip_points:
+                map_bytes = cached_trip_map(trip_points, google_api_key)
+                if map_bytes:
+                    st.markdown("#### 🗺️ Your trip, mapped")
+                    st.image(map_bytes, width="stretch")
+                    rule()
+
         # Render Day Cards
         for day in days:
             day_total = sum((seg.get("cost") or 0) for seg in day.get("segments", []))
@@ -1073,34 +1080,46 @@ elif page == "Travel DNA":
                 unsafe_allow_html=True)
     rule()
 
-    left, right = st.columns([3, 2], gap="large")
-    with left:
-        st.plotly_chart(dna_radar(), width="stretch", config={"displayModeBar": False})
-        st.markdown('<div class="hz-kicker" style="text-align:center">each axis 0–100 · '
-                    "hover for values · shaped by 4 completed trips</div>",
-                    unsafe_allow_html=True)
-    with right:
-        st.markdown("#### Learned preferences")
-        for kicker, value in DNA_PREFS:
-            st.markdown(
-                f'<div class="hz-card" style="padding:.75rem 1.05rem">'
-                f'<div class="hz-kicker">{kicker}</div>'
-                f'<div style="font-weight:500">{html.escape(value)}</div></div>',
-                unsafe_allow_html=True)
+    if not st.session_state.auth_user:
+        st.info("Log in to view your Travel DNA — it's tied to your account, not this browser session.")
+        if st.button("Go to Login", type="primary"):
+            set_page("Login")
+    else:
+        from src.models.travel_dna import compute_dna_axes, has_learned_dna, learned_preference_rows
+        profile = st.session_state.auth_user.profile
 
-    rule()
-    st.markdown("#### Recent learning")
-    st.markdown('<p style="color:#94A3B8;margin-top:-.4rem;font-size:.9rem">The DNALearner '
-                "agent explains every change it makes — nothing shifts silently.</p>",
-                unsafe_allow_html=True)
-    for ts, dim, change, trigger in DNA_EVENTS:
-        st.markdown(
-            f"""<div class="hz-card" style="padding:.8rem 1.05rem">
-                  <div class="hz-kicker">{ts} · {dim}</div>
-                  <div style="font-family:'Spline Sans Mono',monospace;color:#FFB800;
-                              font-size:.9rem;margin:.2rem 0">{change}</div>
-                  <div class="hz-body">{html.escape(trigger)}</div>
-                </div>""", unsafe_allow_html=True)
+        if not has_learned_dna(profile):
+            st.info("Nothing learned yet. Plan and complete a trip in Chat, then visit your "
+                    "Profile page to sync what Horizon learned about you.")
+            if st.button("Go to Chat", type="primary"):
+                set_page("Chat")
+        else:
+            axes = compute_dna_axes(profile)
+            left, right = st.columns([3, 2], gap="large")
+            with left:
+                st.plotly_chart(dna_radar(axes), width="stretch", config={"displayModeBar": False})
+                st.markdown('<div class="hz-kicker" style="text-align:center">each axis 0–100 · '
+                            "hover for values · built from your synced preferences</div>",
+                            unsafe_allow_html=True)
+            with right:
+                st.markdown("#### Learned preferences")
+                for kicker, value in learned_preference_rows(profile):
+                    st.markdown(
+                        f'<div class="hz-card" style="padding:.75rem 1.05rem">'
+                        f'<div class="hz-kicker">{html.escape(kicker)}</div>'
+                        f'<div style="font-weight:500">{html.escape(value)}</div></div>',
+                        unsafe_allow_html=True)
+
+            rule()
+            st.markdown("#### Recent learning")
+            st.markdown('<p style="color:#94A3B8;margin-top:-.4rem;font-size:.9rem">Insights the '
+                        "DNALearner agent has picked up from your trips so far.</p>",
+                        unsafe_allow_html=True)
+            for note in reversed(profile.travel_dna_notes):
+                st.markdown(
+                    f'<div class="hz-card" style="padding:.8rem 1.05rem">'
+                    f'<div class="hz-body">{html.escape(note)}</div></div>',
+                    unsafe_allow_html=True)
 
 
 # ============================================================================

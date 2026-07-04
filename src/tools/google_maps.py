@@ -1,9 +1,11 @@
 """
-Thin REST wrappers around three Google Maps Platform APIs:
+Thin REST wrappers around four Google Maps Platform APIs:
   - Places API (New)        — text search for real attractions/restaurants, photos,
                                plus Autocomplete/Place Details for place_id resolution
   - Routes API              — real walking distance/duration between two points
   - Street View Static API  — a street-level image for a given coordinate
+  - Maps Static API         — one rendered map image with a marker per place,
+                               for showing the whole trip laid out geographically
 
 Every function here either returns data or raises — callers decide how to
 degrade (this project's convention is: wrap the call site in try/except and
@@ -19,11 +21,19 @@ name. resolve_place_id() is the entry point for that: it turns "Patna" or
 "Eiffel Tower" into a concrete place_id plus coordinates, via Autocomplete
 first and a plain text search as a fallback.
 """
+import string
+
 import requests
 
 PLACES_BASE = "https://places.googleapis.com/v1"
 ROUTES_URL = "https://routes.googleapis.com/directions/v2:computeRoutes"
 STREET_VIEW_URL = "https://maps.googleapis.com/maps/api/streetview"
+STATIC_MAP_URL = "https://maps.googleapis.com/maps/api/staticmap"
+
+# Static Maps API marker labels are a single alphanumeric character — this
+# covers a typical multi-day itinerary's worth of grounded segments (1-9 then
+# A-Z) before labels start repeating.
+MAP_MARKER_LABELS = "123456789" + string.ascii_uppercase
 
 _SEARCH_FIELD_MASK = (
     "places.id,places.displayName,places.formattedAddress,places.location,"
@@ -186,3 +196,21 @@ def resolve_place_id(query: str, api_key: str):
         return None
     top = results[0]
     return {"place_id": top["place_id"], "lat": top["lat"], "lng": top["lng"]}
+
+
+def fetch_trip_static_map(points: list, api_key: str, size: str = "640x400"):
+    """Maps Static API. Renders one map image with a labeled marker per point,
+    for showing an entire trip's grounded places at a glance. `points` is a
+    list of {"lat": float, "lng": float} dicts, in the order they should be
+    numbered (typically day-by-day, morning-to-evening). Returns the raw PNG
+    bytes, or None if there's nothing to plot."""
+    if not points:
+        return None
+    params = [("size", size), ("maptype", "roadmap"), ("key", api_key)]
+    for i, point in enumerate(points):
+        label = MAP_MARKER_LABELS[min(i, len(MAP_MARKER_LABELS) - 1)]
+        params.append(("markers", f"label:{label}|{point['lat']},{point['lng']}"))
+
+    response = requests.get(STATIC_MAP_URL, params=params, timeout=REQUEST_TIMEOUT)
+    response.raise_for_status()
+    return response.content

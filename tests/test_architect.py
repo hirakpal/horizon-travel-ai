@@ -191,7 +191,7 @@ def test_run_grounds_matching_segment_titles_in_real_places(monkeypatch):
         mock_llm.with_structured_output.return_value.invoke.return_value = day
         result = agent.run(state, "build it")
 
-    assert mock_search.call_count == 2  # one attractions search, one restaurant search
+    assert mock_search.call_count == 4  # attractions + breakfast + lunch + dinner
     # Every search this run made was biased toward the resolved destination coordinate
     for call in mock_search.call_args_list:
         assert call.kwargs["location_bias"] == {"lat": 22.57, "lng": 88.36}
@@ -202,6 +202,61 @@ def test_run_grounds_matching_segment_titles_in_real_places(monkeypatch):
     assert any("Stunning architecture" in e[1] for e in segments[0]["evidence"])
     # A title with no reasonable match must not be forced onto an unrelated real place
     assert "place_id" not in segments[1]
+
+
+def test_fetch_place_candidates_runs_meal_specific_searches_and_tags_them(monkeypatch):
+    """Regression test: food recommendations must be meal-specific (breakfast/
+    lunch/dinner), not one generic 'restaurants' search — real places for each
+    part of the day, grouped so the model can't confuse a breakfast cafe with
+    a dinner spot."""
+    monkeypatch.setenv("GOOGLE_MAPS_API_KEY", "test-key")
+    agent = ItineraryArchitectAgent()
+
+    attractions_result = [{"place_id": "a1", "name": "Victoria Memorial", "address": None,
+                            "rating": None, "review_snippet": None, "photo_name": None, "lat": 1, "lng": 1}]
+    breakfast_result = [{"place_id": "b1", "name": "Flurys", "address": None,
+                          "rating": None, "review_snippet": None, "photo_name": None, "lat": 1, "lng": 1}]
+    lunch_result = [{"place_id": "l1", "name": "6 Ballygunge Place", "address": None,
+                      "rating": None, "review_snippet": None, "photo_name": None, "lat": 1, "lng": 1}]
+    dinner_result = [{"place_id": "d1", "name": "Peter Cat", "address": None,
+                       "rating": None, "review_snippet": None, "photo_name": None, "lat": 1, "lng": 1}]
+
+    with patch.object(google_maps, "resolve_place_id", return_value=None), \
+         patch.object(google_maps, "text_search_places",
+                      side_effect=[attractions_result, breakfast_result, lunch_result, dinner_result]) as mock_search:
+        candidates = agent._fetch_place_candidates("Kolkata", ["non_veg"])
+
+    queries = [call.args[0] for call in mock_search.call_args_list]
+    assert "attractions" in queries[0].lower()
+    assert "breakfast" in queries[1].lower()
+    assert "lunch" in queries[2].lower()
+    assert "dinner" in queries[3].lower()
+    assert "non veg" in queries[2].lower() and "non veg" in queries[3].lower()
+
+    by_name = {c["name"]: c["meal"] for c in candidates}
+    assert by_name["Victoria Memorial"] is None
+    assert by_name["Flurys"] == "breakfast"
+    assert by_name["6 Ballygunge Place"] == "lunch"
+    assert by_name["Peter Cat"] == "dinner"
+
+
+def test_places_note_groups_candidates_by_meal():
+    agent = ItineraryArchitectAgent()
+    candidates = [
+        {"name": "Victoria Memorial", "meal": None, "rating": None, "address": None},
+        {"name": "Flurys", "meal": "breakfast", "rating": None, "address": None},
+        {"name": "6 Ballygunge Place", "meal": "lunch", "rating": None, "address": None},
+        {"name": "Peter Cat", "meal": "dinner", "rating": None, "address": None},
+    ]
+    note = agent._places_note(candidates, used_names=set())
+    assert "Real attractions options" in note
+    assert "Real breakfast options" in note
+    assert "Real lunch options" in note
+    assert "Real dinner options" in note
+    assert "Victoria Memorial" in note
+    assert "Flurys" in note
+    assert "6 Ballygunge Place" in note
+    assert "Peter Cat" in note
 
 
 def test_run_applies_real_walking_distance_between_grounded_segments(monkeypatch):
@@ -270,6 +325,6 @@ def test_run_degrades_gracefully_when_place_id_resolution_fails_but_search_succe
         mock_llm.with_structured_output.return_value.invoke.return_value = _fake_day(1)
         agent.run(state, "build it")
 
-    assert mock_search.call_count == 2
+    assert mock_search.call_count == 4
     for call in mock_search.call_args_list:
         assert call.kwargs["location_bias"] is None
