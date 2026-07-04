@@ -469,7 +469,7 @@ def conf_badge_html(score: int) -> str:
 def evidence_block(score: int, evidence: list, note: str | None, key: str):
     st.markdown(conf_badge_html(score), unsafe_allow_html=True)
     with st.expander("Why this score — evidence"):
-        items = "".join(f"<li><b>{EV[s]}</b> — {html.escape(d)}</li>" for s, d in evidence)
+        items = "".join(f"<li><b>{EV.get(s, str(s).title())}</b> — {html.escape(str(d))}</li>" for s, d in evidence)
         st.markdown(f'<ul class="hz-evidence">{items}</ul>', unsafe_allow_html=True)
         if note:
             st.markdown(f'<div class="hz-uncert">⚠ {html.escape(note)}</div>',
@@ -772,40 +772,44 @@ elif page == "Itinerary":
     if not ts or not getattr(ts, "itinerary_data", None):
         st.info("Your itinerary is still being planned. Please complete your chat request first!")
     else:
-        it = st.session_state.travel_state.itinerary_data
-        
+        it = ts.itinerary_data
+        days = it.get("itinerary", [])
+        total_spend = sum((seg.get("cost") or 0) for day in days for seg in day.get("segments", []))
+
         # Summary Header
-        st.markdown(f"### Plan Overview")
-        st.write(f"Total Budget: ₹{it.get('total_budget', 'N/A')}")
-        st.write(f"Total Estimated Spend: ₹{it.get('total_spent', 'N/A')}")
+        st.markdown("### Plan Overview")
+        budget = ts.preferences.budget
+        st.write(f"Total Budget: ₹{budget:,}" if budget else "Total Budget: N/A")
+        st.write(f"Total Estimated Spend: ₹{total_spend:,}")
         rule()
 
         # Render Day Cards
-        for day in it.get("itinerary", []):
+        for day in days:
+            day_total = sum((seg.get("cost") or 0) for seg in day.get("segments", []))
             st.markdown(f"""<div class="hz-day">
-                            <span class="n">Day {day['day']}</span>
-                            <span class="t">{html.escape(day['title'])}</span>
-                            <span class="w">Total: ₹{day.get('total_cost', 0)}</span>
+                            <span class="n">Day {day.get('n', '?')}</span>
+                            <span class="t">{html.escape(day.get('theme', day.get('date', '')))}</span>
+                            <span class="w">Total: ₹{day_total:,}</span>
                         </div>""", unsafe_allow_html=True)
-            
-            for act in day.get("activities", []):
-                # Mapping your Architect's JSON fields to your segment_card helper
-                segment = {
-                    "time": act["time"],
-                    "dur": 60, # Mocked duration
-                    "icon": "📍",
-                    "title": act["activity"],
-                    "desc": act["activity"],
-                    "conf": 90, # Default confidence
-                    "evidence": [("pref", "Based on your DNA")],
-                    "cost": act["cost"],
-                    "transport": None,
-                    "walk": 0.0,
-                    "crowd": "moderate",
-                    "note": None,
-                    "alt": None
-                }
-                segment_card(segment, "₹", key=f"d{day['day']}a{act['time']}")
+
+            for i, seg in enumerate(day.get("segments", [])):
+                evidence = seg.get("evidence") or [("pref", "Based on your preferences")]
+                alt = seg.get("alt")
+                segment_card({
+                    "time": seg.get("time", "—"),
+                    "dur": seg.get("dur", 60),
+                    "icon": seg.get("icon", "📍"),
+                    "title": seg.get("title", "Activity"),
+                    "desc": seg.get("desc", ""),
+                    "conf": seg.get("conf", 80),
+                    "evidence": [tuple(e) for e in evidence],
+                    "cost": seg.get("cost"),
+                    "transport": seg.get("transport"),
+                    "walk": seg.get("walk", 0.0) or 0.0,
+                    "crowd": seg.get("crowd"),
+                    "note": seg.get("note"),
+                    "alt": tuple(alt) if alt else None,
+                }, "₹", key=f"d{day.get('n', 0)}s{i}")
 
 
 # ============================================================================
