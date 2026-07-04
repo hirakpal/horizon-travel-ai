@@ -51,7 +51,12 @@ class TransportSuggestionsAgent(BaseAgent):
         """
 
         structured_llm = self.llm.with_structured_output(TransportOptionsList, method="function_calling")
-        result = structured_llm.invoke(prompt)
+        # A bare string to .invoke() becomes a single human message, silently dropping
+        # self.system_prompt — pass it as an explicit system message instead.
+        result = structured_llm.invoke([
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": prompt},
+        ])
         return {"options": [opt.model_dump() for opt in result.options]}
 
     def get_mock_suggestions(self, origin: str, destination: str, arrival_time: str) -> list:

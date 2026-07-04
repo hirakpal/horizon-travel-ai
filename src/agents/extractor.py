@@ -18,16 +18,21 @@ class PreferenceExtractionAgent(BaseAgent):
         # Prepare the current state as context for the model
         current_prefs_json = state.preferences.model_dump_json()
         
-        # Call the LLM to extract new data
-        updated_prefs = structured_llm.invoke(
-            f"Current preferences: {current_prefs_json}. "
-            f"New user input: '{input_text}'. "
-            "Extract any new or updated information into the schema. "
-            "'destination' is the place the user wants to travel TO; 'origin' is the city "
-            "they are traveling FROM. A message may name several fields at once (e.g. "
-            "'Goa, 5 days, 20000 INR' gives destination, days, and budget together) — fill "
-            "in every field you can confidently identify, not just the most obvious one."
-        )
+        # Call the LLM to extract new data. Pass the system prompt as an actual system
+        # message — a bare string to .invoke() becomes a single human message, silently
+        # dropping self.system_prompt entirely.
+        updated_prefs = structured_llm.invoke([
+            {"role": "system", "content": self.system_prompt},
+            {"role": "user", "content": (
+                f"Current preferences: {current_prefs_json}. "
+                f"New user input: '{input_text}'. "
+                "Extract any new or updated information into the schema. "
+                "'destination' is the place the user wants to travel TO; 'origin' is the city "
+                "they are traveling FROM. A message may name several fields at once (e.g. "
+                "'Goa, 5 days, 20000 INR' gives destination, days, and budget together) — fill "
+                "in every field you can confidently identify, not just the most obvious one."
+            )},
+        ])
         
         # Return the update for the orchestrator to merge into the state
         return {"updated_preferences": updated_prefs}
