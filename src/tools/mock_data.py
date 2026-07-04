@@ -1,8 +1,11 @@
-def get_mock_weather(city: str):
-    return {"temp": "22°C", "condition": "sunny", "confidence": 95}
+def get_weather(destination: str, date: str) -> dict:
+    """Simulates a live weather API call."""
+    return {"temp": "28°C", "condition": "Sunny", "risk": "Low"}
 
-def get_mock_crowd_level(place: str):
-    return {"level": "moderate", "reason": "weekday cycle"}
+def get_crowd_levels(destination: str) -> dict:
+    """Simulates a live crowd/footfall API call."""
+    return {"level": "Moderate", "peak_hours": "14:00-16:00"}
 
-def get_transport_options(start: str, end: str):
-    return [{"type": "train", "duration": "45m", "cost": 500}]
+def get_flight_status(origin: str, dest: str) -> dict:
+    """Simulates a flight availability/pricing lookup."""
+    return {"price_estimate": "₹12,000", "on_time_performance": "98%"}
