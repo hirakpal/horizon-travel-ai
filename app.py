@@ -9,26 +9,14 @@ st.set_page_config(page_title="Horizon • Travel AI", page_icon="🌊", layout=
 st.markdown("""
 <style>
     .main-header { font-family: 'Playfair Display', serif; color: #FF6B6B; text-align: center; }
-    .destination-card {
-        background: linear-gradient(145deg, #1e1e2e, #2a2a40);
-        border-radius: 20px;
-        padding: 0;
-        box-shadow: 0 8px 25px rgba(0,0,0,0.3);
-        overflow: hidden;
+    .destination-card { 
+        background: white; border-radius: 20px; padding: 0; 
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15); overflow: hidden;
         transition: all 0.4s ease;
     }
-    .destination-card:hover {
-        transform: translateY(-8px);
-        box-shadow: 0 15px 35px rgba(255,107,107,0.3);
-    }
-    .card-image {
-        height: 220px;
-        object-fit: cover;
-        width: 100%;
-    }
-    .card-content {
-        padding: 20px;
-    }
+    .destination-card:hover { transform: translateY(-8px); box-shadow: 0 15px 35px rgba(255,107,107,0.25); }
+    .card-image { height: 220px; object-fit: cover; width: 100%; }
+    .card-content { padding: 18px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -45,22 +33,64 @@ def generate_mock_itinerary(dest="Kyoto"):
         {"day":3, "title":"Nature Day", "activity":"Bamboo Forest", "walking":"5.8 km", "confidence":89}
     ]
 
-# ====================== EXPLORE PAGE - REFINED ======================
-if page == "Explore":
+if page == "Home":
+    st.markdown("<h1 class='main-header'>Welcome to Horizon, Hirak! 🌴</h1>", unsafe_allow_html=True)
+    st.image("https://picsum.photos/id/1015/1200/500", use_column_width=True)
+    st.subheader("Your Next Trip Suggestion: Kyoto, Japan • October 2026")
+
+elif page == "Chat":
+    st.title("💬 Chat with Horizon")
+    if "messages" not in st.session_state:
+        st.session_state.messages = [{"role": "assistant", "content": "Hi Hirak! How can I help plan your next adventure?"}]
+    for msg in st.session_state.messages:
+        with st.chat_message(msg["role"]):
+            st.write(msg["content"])
+    if prompt := st.chat_input("Describe your dream trip..."):
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("assistant"):
+            st.write("Planning using your Travel DNA...")
+
+elif page == "Itinerary":
+    st.title("📍 Your Interactive Itinerary")
+    itinerary = generate_mock_itinerary()
+    for day in itinerary:
+        st.info(f"**Day {day['day']}**: {day['activity']} ({day['walking']}) — Confidence: {day['confidence']}%")
+    if st.button("📄 Export as PDF", type="primary"):
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", size=16)
+        pdf.cell(200, 10, txt="Horizon Itinerary - Kyoto", ln=True, align='C')
+        for day in itinerary:
+            pdf.cell(200, 10, txt=f"Day {day['day']}: {day['activity']}", ln=True)
+        pdf.output("itinerary.pdf")
+        with open("itinerary.pdf", "rb") as f:
+            st.download_button("Download PDF", f, file_name="Horizon_Itinerary.pdf", mime="application/pdf")
+
+elif page == "Travel DNA":
+    st.title("🧬 Your Travel DNA")
+    col1, col2 = st.columns(2)
+    with col1:
+        categories = ['Adventure','Culture','Food','Photography','Relax','Walking']
+        values = [72,94,88,95,68,81]
+        fig = go.Figure(go.Scatterpolar(r=values+[values[0]], theta=categories+[categories[0]], fill='toself', line_color='#FF6B6B'))
+        fig.update_layout(polar=dict(radialaxis=dict(visible=True, range=[0,100])), showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+elif page == "Explore":
     st.title("✨ Top 10 International Destinations")
-    st.caption("Personalized recommendations based on your Travel DNA")
+    st.caption("Personalized for your Travel DNA")
     
     destinations = [
-        ("Kyoto, Japan", "Temples & Cherry Blossoms", "97%", "https://picsum.photos/id/1015/600/300"),
-        ("Bali, Indonesia", "Beaches & Spiritual Culture", "92%", "https://picsum.photos/id/1016/600/300"),
-        ("Paris, France", "Art, Romance & Cuisine", "88%", "https://picsum.photos/id/1018/600/300"),
-        ("Santorini, Greece", "Iconic Sunsets & Cliffs", "91%", "https://picsum.photos/id/102/600/300"),
-        ("Swiss Alps, Switzerland", "Mountains & Scenic Trains", "85%", "https://picsum.photos/id/103/600/300"),
-        ("Marrakech, Morocco", "Vibrant Markets & Desert", "79%", "https://picsum.photos/id/104/600/300"),
-        ("Banff, Canada", "Crystal Lakes & Rockies", "82%", "https://picsum.photos/id/105/600/300"),
-        ("Barcelona, Spain", "Gaudi Architecture & Vibes", "87%", "https://picsum.photos/id/106/600/300"),
-        ("Queenstown, New Zealand", "Adventure Capital", "76%", "https://picsum.photos/id/107/600/300"),
-        ("Dubai, UAE", "Luxury & Futuristic Wonders", "81%", "https://picsum.photos/id/108/600/300")
+        ("Kyoto, Japan", "Temples & Cherry Blossoms", "97%", "https://picsum.photos/id/1015/600/280"),
+        ("Bali, Indonesia", "Beaches & Spiritual Culture", "92%", "https://picsum.photos/id/1016/600/280"),
+        ("Paris, France", "Art, Romance & Cuisine", "88%", "https://picsum.photos/id/1018/600/280"),
+        ("Santorini, Greece", "Iconic Sunsets", "91%", "https://picsum.photos/id/102/600/280"),
+        ("Swiss Alps", "Mountains & Scenic Trains", "85%", "https://picsum.photos/id/103/600/280"),
+        ("Marrakech, Morocco", "Vibrant Markets", "79%", "https://picsum.photos/id/104/600/280"),
+        ("Banff, Canada", "Crystal Lakes & Rockies", "82%", "https://picsum.photos/id/105/600/280"),
+        ("Barcelona, Spain", "Architecture & Vibes", "87%", "https://picsum.photos/id/106/600/280"),
+        ("Queenstown, New Zealand", "Adventure Capital", "76%", "https://picsum.photos/id/107/600/280"),
+        ("Dubai, UAE", "Luxury & Futuristic", "81%", "https://picsum.photos/id/108/600/280")
     ]
     
     cols = st.columns(2)
@@ -68,28 +98,16 @@ if page == "Explore":
         with cols[i % 2]:
             st.markdown(f"""
             <div class="destination-card">
-                <img src="{img}" class="card-image">
-                <div class="card-content">
+                <img src="{img}" style="width:100%; height:220px; object-fit:cover;">
+                <div style="padding:18px;">
                     <h3>{name}</h3>
                     <p>{desc}</p>
-                    <div style="background:#333; border-radius:10px; padding:3px;">
-                        <div style="background:#FF6B6B; width:{match}; height:8px; border-radius:10px;"></div>
-                    </div>
                     <p><strong>DNA Match: {match}</strong></p>
                 </div>
             </div>
             """, unsafe_allow_html=True)
             
             if st.button(f"🌟 Plan Trip to {name.split(',')[0]}", key=f"plan_{i}"):
-                st.session_state.current_destination = name
-                st.success(f"Generating full personalized itinerary for **{name}**...")
-                st.switch_page("Itinerary")
-
-else:
-    # Other pages (keep as before)
-    if page == "Home":
-        st.markdown("<h1 class='main-header'>Welcome to Horizon, Hirak! 🌴</h1>", unsafe_allow_html=True)
-        st.image("https://picsum.photos/id/1015/1200/500", use_column_width=True)
-    # ... (add other pages as needed)
+                st.success(f"Generating full itinerary for **{name}** using your Travel DNA...")
 
 st.caption("Horizon Travel AI • Capstone Demo")
