@@ -107,7 +107,9 @@ def test_scenario_piecemeal_info_full_happy_path():
         extraction(budget=120000),
         extraction(origin="Delhi", month="November"),
     ]), patch.object(orchestrator.transport, "run",
-                      return_value={"options": [transport_option(price=28000, duration="9h")]}):
+                      return_value={"options": [transport_option(price=28000, duration="9h")]}), \
+         patch.object(orchestrator.transport, "run_return",
+                      return_value={"options": [transport_option(mode="train", price=9000, duration="6h")]}):
         r1 = orchestrator.process_turn(state, "I want to visit Kyoto")
         assert state.preferences.destination == "Kyoto"
         assert state.preferences.planning_stage == "basic_info"
@@ -132,7 +134,16 @@ def test_scenario_piecemeal_info_full_happy_path():
         # User picks the (only) suggested option by naming its mode
         r5b = orchestrator.process_turn(state, "flight")
         assert state.preferences.transport_cost == 28000
-        assert "hotel" in r5b.lower()
+        assert "return" in r5b.lower()
+
+        r5c = orchestrator.process_turn(state, "evening")
+        assert state.preferences.departure_time == "evening"
+        assert state.transport_options
+        assert "pick one" in r5c.lower()
+
+        r5d = orchestrator.process_turn(state, "train")
+        assert state.preferences.return_transport_cost == 9000
+        assert "hotel" in r5d.lower()
         assert state.preferences.planning_stage == "hotel_food"
 
         r6 = orchestrator.process_turn(state, "a nice boutique hotel please")
@@ -218,6 +229,8 @@ def test_scenario_hotel_type_phrasing_variety():
         state.preferences.budget = 60000
         state.preferences.arrival_time = "morning"
         state.preferences.transport_suggestions = "Train ₹1,500, 12h"
+        state.preferences.departure_time = "evening"
+        state.preferences.return_transport_suggestions = "Train ₹1,500, 12h"
 
         response = orchestrator.process_turn(state, phrase)
         assert state.preferences.hotel_type == expected, f"failed for phrasing: {phrase!r}"
@@ -242,6 +255,8 @@ def test_scenario_food_preference_phrasing_variety():
         state.preferences.budget = 50000
         state.preferences.arrival_time = "evening"
         state.preferences.transport_suggestions = "Flight ₹4,500, 1h"
+        state.preferences.departure_time = "morning"
+        state.preferences.return_transport_suggestions = "Flight ₹4,500, 1h"
         state.preferences.hotel_type = "mid_range"
 
         response = orchestrator.process_turn(state, phrase)
@@ -280,6 +295,8 @@ def _set_ready_to_plan_state(state):
     state.preferences.budget = 55000
     state.preferences.arrival_time = "morning"
     state.preferences.transport_suggestions = "Train ₹1,800, 10h"
+    state.preferences.departure_time = "evening"
+    state.preferences.return_transport_suggestions = "Train ₹1,600, 10h"
     state.preferences.hotel_type = "mid_range"
     state.preferences.food_preferences = ["vegetarian"]
 
@@ -295,6 +312,8 @@ def test_scenario_tight_budget_shows_alert_but_user_can_still_proceed():
     state.preferences.budget = 5000  # unrealistically tight for 10 days luxury
     state.preferences.arrival_time = "morning"
     state.preferences.transport_suggestions = "Bus ₹900, 14h"
+    state.preferences.departure_time = "evening"
+    state.preferences.return_transport_suggestions = "Bus ₹900, 14h"
     state.preferences.hotel_type = "luxury"
     state.preferences.food_preferences = ["non_veg"]
 
@@ -376,6 +395,7 @@ def test_scenario_total_llm_outage_degrades_gracefully_end_to_end():
     with patch.object(orchestrator.extractor, "run", side_effect=Exception("network down")), \
          patch.object(orchestrator.concierge, "run", side_effect=Exception("network down")), \
          patch.object(orchestrator.transport, "run", side_effect=Exception("network down")), \
+         patch.object(orchestrator.transport, "run_return", side_effect=Exception("network down")), \
          patch.object(orchestrator.architect, "run", side_effect=Exception("network down")), \
          patch.object(orchestrator.learner, "run", side_effect=Exception("network down")):
 
@@ -395,7 +415,16 @@ def test_scenario_total_llm_outage_degrades_gracefully_end_to_end():
 
         r2b = orchestrator.process_turn(state, "flight")
         assert state.preferences.transport_suggestions  # selection recorded despite the outage
-        assert "hotel" in r2b.lower()
+        assert "return" in r2b.lower()
+
+        r2c = orchestrator.process_turn(state, "evening")
+        assert state.preferences.departure_time == "evening"
+        assert state.transport_options
+        assert "pick one" in r2c.lower()
+
+        r2d = orchestrator.process_turn(state, "train")
+        assert state.preferences.return_transport_suggestions
+        assert "hotel" in r2d.lower()
 
         r3 = orchestrator.process_turn(state, "mid-range hotel")
         assert state.preferences.hotel_type == "mid_range"
@@ -444,6 +473,8 @@ def test_scenario_user_corrects_a_detail_mid_flow():
     state.preferences.budget = 45000
     state.preferences.arrival_time = "morning"
     state.preferences.transport_suggestions = "Flight ₹5,000, 1h"
+    state.preferences.departure_time = "evening"
+    state.preferences.return_transport_suggestions = "Flight ₹5,000, 1h"
 
     # User answers the hotel question but also sneaks in a budget change; our
     # deterministic hotel matcher should still work, extractor isn't even needed
@@ -480,13 +511,21 @@ def test_scenario_budget_uncertainty_gets_estimated_after_hotel_choice():
         orchestrator.process_turn(state, "early morning")
         r3 = orchestrator.process_turn(state, "flight")
     assert state.preferences.transport_cost == 90000
-    assert "hotel" in r3.lower()
+    assert "return" in r3.lower()
+    assert state.preferences.budget is None  # still no number — hotel not chosen yet
+
+    with patch.object(orchestrator.transport, "run_return",
+                       return_value={"options": [transport_option(mode="train", price=15000, duration="7h")]}):
+        orchestrator.process_turn(state, "evening")
+        r3b = orchestrator.process_turn(state, "train")
+    assert state.preferences.return_transport_cost == 15000
+    assert "hotel" in r3b.lower()
     assert state.preferences.budget is None  # still no number — hotel not chosen yet
 
     r4 = orchestrator.process_turn(state, "mid-range hotel")
-    # Both transport and hotel now known -> a real budget gets computed and set
+    # Both transport legs and hotel now known -> a real budget gets computed and set
     assert state.preferences.budget is not None
-    expected_total = 90000 + 5000 * 5 + 800 * 5
+    expected_total = 90000 + 15000 + 5000 * 5 + 800 * 5
     assert state.preferences.budget == expected_total
     assert f"₹{expected_total:,}" in r4
     assert "food" in r4.lower()

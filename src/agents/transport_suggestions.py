@@ -31,23 +31,33 @@ class TransportSuggestionsAgent(BaseAgent):
         super().__init__("Transport Suggestions", system_prompt)
 
     def run(self, state: TravelState, input_text: str) -> dict:
-        """Generate 3-4 structured transport options based on origin, destination, arrival time."""
+        """Generate 3-4 structured transport options for the outbound leg based on
+        origin, destination, arrival time."""
         prefs = state.preferences
-
         if not (prefs.origin and prefs.destination and prefs.arrival_time):
             return {"options": []}
+        return self._search(prefs.origin, prefs.destination, "arrival", prefs.arrival_time, prefs)
 
+    def run_return(self, state: TravelState, input_text: str) -> dict:
+        """Generate 3-4 structured transport options for the return leg (destination
+        back to origin), based on the traveler's preferred departure time."""
+        prefs = state.preferences
+        if not (prefs.origin and prefs.destination and prefs.departure_time):
+            return {"options": []}
+        return self._search(prefs.destination, prefs.origin, "departure", prefs.departure_time, prefs)
+
+    def _search(self, origin: str, destination: str, time_label: str, time_value: str, prefs) -> dict:
         prompt = f"""
-        Suggest 3-4 realistic transport options for this trip:
+        Suggest 3-4 realistic transport options for this trip leg:
 
-        Origin: {prefs.origin}
-        Destination: {prefs.destination}
-        Preferred Arrival Time: {prefs.arrival_time}
+        Origin: {origin}
+        Destination: {destination}
+        Preferred {time_label.title()} Time: {time_value}
         Travel Date: {prefs.month}
         Budget: ₹{prefs.budget}
 
         Include a mix of modes (flight/train/bus/ship as applicable) with realistic Indian
-        pricing, and explain why each option suits the stated arrival time preference.
+        pricing, and explain why each option suits the stated {time_label} time preference.
         """
 
         structured_llm = self.llm.with_structured_output(TransportOptionsList, method="function_calling")

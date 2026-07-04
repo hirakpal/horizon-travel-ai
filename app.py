@@ -770,7 +770,7 @@ elif page == "Chat":
 
     stage_labels = {
         "basic_info": "Gathering trip basics",
-        "transport": "Arrival time & transport options",
+        "transport": "Transport & return journey",
         "hotel_food": "Hotel & food preferences",
         "ready_to_plan": "Awaiting your go-ahead",
         "planning": "Building itinerary…",
@@ -796,8 +796,9 @@ elif page == "Chat":
             st.rerun()
         st.caption("Or just tell me a number in the chat below.")
 
-    # --- Interactive transport option cards ---
-    if current_stage == "transport" and state.preferences.arrival_time and state.transport_options:
+    # --- Interactive transport option cards (outbound) ---
+    if (current_stage == "transport" and state.preferences.arrival_time
+            and not state.preferences.transport_suggestions and state.transport_options):
         st.markdown("#### ✈️ Choose your transport")
         cols = st.columns(len(state.transport_options))
         for col, option in zip(cols, state.transport_options):
@@ -814,6 +815,28 @@ elif page == "Chat":
                 if st.button(f"Select {option['mode'].title()}",
                              key=f"transport_{option['mode']}_{option['price']}", width="stretch"):
                     orchestrator.select_transport_option(state, option)
+                    st.rerun()
+        st.caption("Or just type which one you'd like below.")
+
+    # --- Interactive transport option cards (return journey) ---
+    elif (current_stage == "transport" and state.preferences.departure_time
+            and not state.preferences.return_transport_suggestions and state.transport_options):
+        st.markdown("#### 🔁 Choose your return transport")
+        cols = st.columns(len(state.transport_options))
+        for col, option in zip(cols, state.transport_options):
+            with col:
+                icon = TRANSPORT_MODE_ICONS.get(option["mode"].lower(), "📍")
+                st.markdown(
+                    f"""<div class="hz-card">
+                          <div class="hz-title">{icon} {html.escape(option['mode'].title())}</div>
+                          <div class="hz-body">₹{option['price']:,} · {html.escape(option['duration'])}<br>
+                          {html.escape(option['departure'])} → {html.escape(option['arrival'])}</div>
+                          <div class="hz-body" style="font-size:.8rem;color:#64748B">
+                          {html.escape(option['why'])}</div>
+                        </div>""", unsafe_allow_html=True)
+                if st.button(f"Select {option['mode'].title()}",
+                             key=f"return_transport_{option['mode']}_{option['price']}", width="stretch"):
+                    orchestrator.select_return_transport_option(state, option)
                     st.rerun()
         st.caption("Or just type which one you'd like below.")
 
@@ -907,7 +930,8 @@ elif page == "Itinerary":
         orchestrator = st.session_state.get("orchestrator")
         p = ts.preferences
         if orchestrator and p.transport_cost is not None and p.hotel_cost_per_night is not None:
-            hotel_transport_estimate = p.transport_cost + p.hotel_cost_per_night * (p.days or 0)
+            hotel_transport_estimate = ((p.transport_cost or 0) + (p.return_transport_cost or 0)
+                                         + p.hotel_cost_per_night * (p.days or 0))
         elif orchestrator:
             hotel_transport_estimate = orchestrator.estimate_trip_cost(p.destination, p.days, p.hotel_type)
         else:
@@ -926,6 +950,10 @@ elif page == "Itinerary":
         st.write(f"Your budget: ₹{budget:,}" if budget else "Your budget: N/A")
         if budget and grand_total > budget:
             st.warning(f"⚠️ This plan is approximately ₹{grand_total - budget:,} over your stated budget.")
+        if ts.preferences.checkin_advice:
+            st.write(f"🛫 Outbound: {ts.preferences.checkin_advice}")
+        if ts.preferences.return_checkin_advice:
+            st.write(f"🛬 Return: {ts.preferences.return_checkin_advice}")
         rule()
 
         # Real place photo / Street View imagery — only attempted when a Google
