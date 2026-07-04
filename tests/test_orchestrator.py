@@ -135,10 +135,16 @@ def test_affirmative_confirmation_triggers_itinerary_build():
     state.preferences.hotel_type = "mid_range"
     state.preferences.food_preferences = ["vegetarian"]
 
-    fake_itinerary = (
-        '{"itinerary": [{"day": 1, "title": "Arrival", "total_cost": 1000, "activities": []}], '
-        '"total_budget": 100000, "total_spent": 50000}'
-    )
+    fake_itinerary = {
+        "itinerary": [
+            {"n": 1, "date": "Day 1", "theme": "Arrival", "weather": None, "walk": 1.0,
+             "segments": [
+                 {"time": "09:00", "dur": 60, "icon": "📍", "title": "Beach walk",
+                  "desc": "A walk on the beach", "conf": 85, "evidence": [["dna", "you like beaches"]],
+                  "alt": None, "walk": 1.0, "cost": 500, "crowd": "low", "transport": None},
+             ]},
+        ]
+    }
 
     with _no_op_extractor(orchestrator), \
          patch.object(orchestrator.architect, "run", return_value={"itinerary": fake_itinerary}), \

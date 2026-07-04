@@ -1,8 +1,5 @@
 # src/orchestrator.py
 
-import json
-import re
-
 from src.models.state import TravelState
 from src.models.preferences import TravelPreferences
 from src.agents.concierge import ConciergeAgent
@@ -298,9 +295,9 @@ class RootOrchestrator:
         state.active_agent = "Architect"
         try:
             architect_result = self.architect.run(state, user_input)
-            match = re.search(r'\{.*\}', architect_result['itinerary'], re.DOTALL)
-            if match:
-                state.itinerary_data = json.loads(match.group(0))
+            itinerary_data = architect_result.get("itinerary")
+            if itinerary_data and itinerary_data.get("itinerary"):
+                state.itinerary_data = itinerary_data
                 self.learner.run(state, user_input, plan=state.itinerary_data)
                 return ("I've built the perfect itinerary for your trip! Please head over to the "
                         "**Itinerary** tab to view your day-by-day plan.")

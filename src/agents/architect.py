@@ -1,16 +1,16 @@
 from src.agents.base import BaseAgent
 from src.models.state import TravelState
+from src.models.itinerary import ItineraryPlan
 
 class ItineraryArchitectAgent(BaseAgent):
     def __init__(self):
         system_prompt = (
-            "You are a master planner. Generate detailed, logical, day-by-day travel itineraries. "
-            "You must return ONLY valid JSON. "
-            "For every activity segment, you must include: "
-            "'time', 'dur' (minutes), 'icon', 'title', 'desc', 'conf' (0-100), "
-            "'evidence' (list of lists, e.g., [['dna', 'explanation']]), "
-            "'alt' (list of 2 strings: ['Title', 'Description'], or null), "
-            "'walk' (km), 'cost' (int), 'crowd' ('low'/'moderate'/'busy'), and 'transport' (str or null)."
+            "You are a master travel planner. Generate detailed, logical, day-by-day travel "
+            "itineraries that strictly follow the given schema. For every activity segment, write "
+            "a specific, concrete title and description (never generic placeholders like "
+            "'Activity'), a realistic cost in INR, a confidence score reflecting how well-known "
+            "the recommendation is, and at least one evidence entry categorized as one of: "
+            "dna, live, local, web, comm, pref."
         )
         super().__init__("Itinerary Architect", system_prompt)
 
@@ -20,11 +20,13 @@ class ItineraryArchitectAgent(BaseAgent):
         Budget: {state.preferences.budget} INR.
         Month: {state.preferences.month}.
         Origin: {state.preferences.origin}.
+        Hotel preference: {state.preferences.hotel_type}.
+        Food preferences: {state.preferences.food_preferences}.
 
-        Return the itinerary as a JSON object with a key 'itinerary' containing a list of days.
-        Each day must have 'n', 'date', 'theme', 'weather', 'walk', and a 'segments' list.
-        Ensure every segment strictly follows the structure defined in the system prompt.
+        Produce one day per requested day, each with 3-4 activity segments covering the day
+        from morning to evening, with realistic times, costs, and walking distances.
         """
-        
-        response = self.llm.invoke(prompt)
-        return {"itinerary": response.content}
+
+        structured_llm = self.llm.with_structured_output(ItineraryPlan, method="function_calling")
+        result = structured_llm.invoke(prompt)
+        return {"itinerary": result.model_dump()}
