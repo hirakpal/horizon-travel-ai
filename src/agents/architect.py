@@ -29,7 +29,7 @@ class ItineraryArchitectAgent(BaseAgent):
         )
         super().__init__("Itinerary Architect", system_prompt)
 
-    def run(self, state: TravelState, input_text: str) -> dict:
+    def run(self, state: TravelState, input_text: str, feedback: str = None) -> dict:
         """Build the itinerary one day at a time rather than asking for the whole
         trip in a single structured-output call. Asked for "exactly N days" in one
         shot, the model would sometimes produce a single very detailed day and stop,
@@ -42,7 +42,11 @@ class ItineraryArchitectAgent(BaseAgent):
         retrieval-then-generate pattern), then matched back onto whatever the
         model actually wrote so the UI can show real ratings/addresses/photos
         and real walking distances. Without a key, this is a complete no-op —
-        the itinerary is built exactly as before, LLM-only."""
+        the itinerary is built exactly as before, LLM-only.
+
+        `feedback`, when given, is the ItineraryValidationAgent's issues from a
+        previous attempt at this same trip — threaded into every day's prompt so
+        a retry actually corrects what was flagged, not just rerolls the dice."""
         p = state.preferences
         total_days = p.days or 1
         candidates = self._fetch_place_candidates(p.destination, p.food_preferences)
@@ -51,7 +55,7 @@ class ItineraryArchitectAgent(BaseAgent):
         used_names = set()
         day_entries = []
         for day_n in range(1, total_days + 1):
-            day = self._build_day(state, day_n, total_days, candidates, used_names)
+            day = self._build_day(state, day_n, total_days, candidates, used_names, feedback=feedback)
             day = self._backfill_day(day, no_hotel=no_hotel)
             if candidates:
                 day = self._ground_day_with_real_places(day, candidates, used_names)
@@ -63,7 +67,7 @@ class ItineraryArchitectAgent(BaseAgent):
         return {"itinerary": plan}
 
     def _build_day(self, state: TravelState, day_n: int, total_days: int,
-                    candidates: list, used_names: set) -> dict:
+                    candidates: list, used_names: set, feedback: str = None) -> dict:
         p = state.preferences
         position_note = ""
         if day_n == 1:
@@ -84,6 +88,11 @@ class ItineraryArchitectAgent(BaseAgent):
                 )
 
         places_note = self._places_note(candidates, used_names)
+        feedback_note = (
+            f"A previous attempt at this itinerary was reviewed and found these issues — "
+            f"make sure THIS version fixes them: {feedback}"
+            if feedback else ""
+        )
 
         prompt = f"""
         Build ONLY day {day_n} of a {total_days}-day itinerary for {p.destination}.
@@ -91,6 +100,7 @@ class ItineraryArchitectAgent(BaseAgent):
         Hotel tier: {p.hotel_type}. Food preferences: {p.food_preferences}.
         {position_note}
         {places_note}
+        {feedback_note}
 
         Produce exactly one day entry (n={day_n}) with 3-4 activity segments covering the day
         from morning to evening, with realistic times, costs, walking distances, crowd levels,

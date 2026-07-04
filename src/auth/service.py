@@ -105,6 +105,13 @@ def update_profile(conn: sqlite3.Connection, user_id: int, **fields) -> User:
     return repository.update_profile(conn, user_id, **fields)
 
 
+def delete_account(conn: sqlite3.Connection, user_id: int) -> None:
+    """Permanently deletes the account and every trip/token tied to it. The
+    caller is responsible for logging the user out afterward — this function
+    only touches the database."""
+    repository.delete_user(conn, user_id)
+
+
 def save_completed_trip(conn: sqlite3.Connection, user_id: int, preferences: TravelPreferences,
                          itinerary_data: Optional[dict], dna_insights: list) -> User:
     """Persists a completed trip against the user (so Travel DNA survives

@@ -216,6 +216,7 @@ def test_affirmative_confirmation_triggers_itinerary_build():
 
     with _no_op_extractor(orchestrator), \
          patch.object(orchestrator.architect, "run", return_value={"itinerary": fake_itinerary}), \
+         patch.object(orchestrator.validator, "run", return_value={"confidence_score": 95, "issues": []}), \
          patch.object(orchestrator.learner, "run", return_value={"dna_insights": []}):
         response = orchestrator.process_turn(state, "yes, go ahead")
 
@@ -245,6 +246,101 @@ def test_architect_failure_keeps_user_at_ready_to_plan():
     assert state.itinerary_data is None
     assert state.preferences.planning_stage == "ready_to_plan"
     assert "issue" in response.lower()
+
+
+def _ready_to_plan_state():
+    state = TravelState(session_id="test")
+    state.preferences.origin = "Mumbai"
+    state.preferences.destination = "Goa"
+    state.preferences.days = 2
+    state.preferences.budget = 100000
+    state.preferences.arrival_time = "morning"
+    state.preferences.transport_suggestions = "x"
+    state.preferences.departure_time = "evening"
+    state.preferences.return_transport_suggestions = "x"
+    state.preferences.hotel_type = "mid_range"
+    state.preferences.food_preferences = ["vegetarian"]
+    return state
+
+
+_FAKE_ITINERARY = {
+    "itinerary": [
+        {"n": 1, "date": "Day 1", "theme": "Arrival", "weather": None, "walk": 1.0,
+         "segments": [
+             {"time": "09:00", "dur": 60, "icon": "📍", "title": "Beach walk",
+              "desc": "A walk on the beach", "conf": 85, "evidence": [["dna", "you like beaches"]],
+              "alt": None, "walk": 1.0, "cost": 500, "crowd": "low", "transport": None},
+         ]},
+    ]
+}
+
+
+def test_validation_loop_retries_with_feedback_until_high_confidence():
+    """Regression test for the Architect/Validator feedback loop: a
+    low-confidence first attempt must be retried with the Validator's issues
+    threaded into the next Architect call, not silently accepted."""
+    orchestrator = _orchestrator()
+    state = _ready_to_plan_state()
+
+    with _no_op_extractor(orchestrator), \
+         patch.object(orchestrator.architect, "run",
+                      return_value={"itinerary": _FAKE_ITINERARY}) as mock_architect, \
+         patch.object(orchestrator.validator, "run", side_effect=[
+             {"confidence_score": 50, "issues": ["Lunch segment is non-veg but traveler wants vegetarian"]},
+             {"confidence_score": 90, "issues": []},
+         ]), \
+         patch.object(orchestrator.learner, "run", return_value={"dna_insights": []}):
+        orchestrator.process_turn(state, "yes")
+
+    assert mock_architect.call_count == 2
+    # The second attempt must have been told what was wrong with the first
+    second_call_kwargs = mock_architect.call_args_list[1].kwargs
+    assert "vegetarian" in second_call_kwargs["feedback"]
+
+    assert state.itinerary_data is not None
+    assert state.itinerary_data["validation"]["confidence_score"] == 90
+    assert state.itinerary_data["validation"]["attempts"] == 2
+
+
+def test_validation_loop_caps_at_five_attempts_and_keeps_best_scoring():
+    """If the Validator never reaches the confidence threshold, the loop must
+    stop at MAX_VALIDATION_ATTEMPTS and ship the best-scoring attempt seen —
+    never loop forever, and never silently keep a worse later attempt over a
+    better earlier one."""
+    orchestrator = _orchestrator()
+    state = _ready_to_plan_state()
+
+    scores = [40, 60, 55, 70, 65]  # never crosses the 80 threshold; best is attempt 4 (70)
+    with _no_op_extractor(orchestrator), \
+         patch.object(orchestrator.architect, "run",
+                      return_value={"itinerary": _FAKE_ITINERARY}) as mock_architect, \
+         patch.object(orchestrator.validator, "run",
+                      side_effect=[{"confidence_score": s, "issues": [f"issue at {s}"]} for s in scores]), \
+         patch.object(orchestrator.learner, "run", return_value={"dna_insights": []}):
+        orchestrator.process_turn(state, "yes")
+
+    assert mock_architect.call_count == 5
+    assert state.itinerary_data["validation"]["confidence_score"] == 70
+    assert state.itinerary_data["validation"]["attempts"] == 4
+
+
+def test_validator_failure_is_treated_as_a_pass_not_a_block():
+    """A Validator outage must not throw away a perfectly good, already-built
+    itinerary — it should degrade to "trust the Architect" rather than
+    blocking the user over a review-step failure."""
+    orchestrator = _orchestrator()
+    state = _ready_to_plan_state()
+
+    with _no_op_extractor(orchestrator), \
+         patch.object(orchestrator.architect, "run",
+                      return_value={"itinerary": _FAKE_ITINERARY}) as mock_architect, \
+         patch.object(orchestrator.validator, "run", side_effect=Exception("provider down")), \
+         patch.object(orchestrator.learner, "run", return_value={"dna_insights": []}):
+        orchestrator.process_turn(state, "yes")
+
+    assert mock_architect.call_count == 1
+    assert state.itinerary_data is not None
+    assert state.itinerary_data["validation"]["confidence_score"] == 100
 
 
 def test_replan_resets_state():
