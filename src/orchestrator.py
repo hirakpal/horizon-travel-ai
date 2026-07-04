@@ -188,12 +188,26 @@ class RootOrchestrator:
         try:
             concierge_result = self.concierge.run(state, user_input)
             if isinstance(concierge_result, dict):
-                return concierge_result.get("reply", str(concierge_result))
-            return str(concierge_result)
+                reply = concierge_result.get("reply", str(concierge_result))
+            else:
+                reply = str(concierge_result)
         except Exception:
             missing = self._missing_basic_fields(state.preferences)
-            return ("To get started, could you tell me your " +
-                    ", ".join(missing) + "?")
+            if missing:
+                return "To get started, could you tell me your " + ", ".join(missing) + "?"
+            reply = "Got it, I have everything I need for the basics!"
+
+        if not self._missing_basic_fields(state.preferences):
+            # All basic fields just became available in this turn (whether the user
+            # gave everything in one message or just supplied the last piece) — chain
+            # straight into the next question instead of waiting on a filler reply.
+            return reply + "\n\n" + self._arrival_time_prompt(state)
+        return reply
+
+    def _arrival_time_prompt(self, state: TravelState) -> str:
+        p = state.preferences
+        return (f"When do you plan to reach {p.destination}? Choose one: **early morning, "
+                f"morning, afternoon, evening, late evening, or night.**")
 
     def _handle_arrival_time(self, state: TravelState, user_input: str) -> str:
         matched = _match_choice(user_input, ARRIVAL_TIME_CHOICES)
@@ -209,11 +223,7 @@ class RootOrchestrator:
             state.preferences.arrival_time = matched
             return self._handle_transport_suggestions(state, user_input)
 
-        p = state.preferences
-        return (f"Great, I have your trip basics for **{p.destination}** "
-                f"({p.days} days, budget {p.budget} INR from {p.origin}). "
-                f"When do you plan to reach {p.destination}? Choose one: **early morning, "
-                f"morning, afternoon, evening, late evening, or night.**")
+        return self._arrival_time_prompt(state)
 
     def _handle_transport_suggestions(self, state: TravelState, user_input: str) -> str:
         suggestions_text = None
