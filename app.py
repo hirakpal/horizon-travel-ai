@@ -22,10 +22,20 @@ import sys
 import os
 from src.orchestrator import RootOrchestrator
 from src.models.state import TravelState
+from src.models.preferences import TravelPreferences
 if "orchestrator" not in st.session_state:
     st.session_state.orchestrator = RootOrchestrator()
 if "travel_state" not in st.session_state:
     st.session_state.travel_state = TravelState(session_id="hirak_001")
+else:
+    # A session kept open across a deploy that added new TravelPreferences fields
+    # (e.g. departure_time) still holds an instance built from the old class —
+    # Python doesn't retroactively add fields to it, so reading a new one raises
+    # AttributeError instead of returning None. Re-casting through the current
+    # schema on every rerun is a cheap, idempotent fix: known fields carry over,
+    # newly-added ones default in.
+    st.session_state.travel_state.preferences = TravelPreferences(
+        **st.session_state.travel_state.preferences.model_dump())
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 # ============================================================================
 # Design tokens — slate night + sunset (coral → amber)
