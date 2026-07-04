@@ -44,6 +44,7 @@ class PreferenceExtractorAgent:
             ],
             tools=tools,
             tool_choice={"type": "function", "function": {"name": "extract_trip_preferences"}},
+            max_tokens=500,
             extra_headers=extra_headers
         )
 
