@@ -691,71 +691,33 @@ if page == "Home":
 # ============================================================================
 # CHAT — proactive clarification flow (PRD §2.1)
 # ============================================================================
-elif page == "Chat":
-    # Initialize Client and Agent
-    if "openai_client" not in st.session_state:
-        # Load key from secrets or environment
-        api_key = st.secrets.get("OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API_KEY")
-        st.session_state.openai_client = OpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=api_key
-        )
-    
+if page == "Chat":
+    # Agent Initialization
     if "extractor_agent" not in st.session_state:
-    st.session_state.extractor_agent = PreferenceExtractorAgent()
+        api_key = st.secrets.get("OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+        st.session_state.extractor_agent = PreferenceExtractorAgent()
 
     st.markdown("## 💬 Chat with Horizon")
-    st.markdown('<p style="color:#94A3B8;margin-top:-.4rem">Describe the trip in your own '
-                "words. Horizon asks targeted questions when critical details are missing.</p>", unsafe_allow_html=True)
-    rule()
-
+    
     if "messages" not in st.session_state:
-        st.session_state.messages = [{
-            "role": "assistant",
-            "content": "Hi Hirak! Where are we going? A vibe, a city, a month — whatever "
-                       "you have. I'll ask for anything I'm missing.",
-        }]
+        st.session_state.messages = [{"role": "assistant", "content": "Hi Hirak! Where are we going?"}]
     if "prefs" not in st.session_state:
         st.session_state.prefs = {"budget": None, "days": None, "month": None, "from": None}
 
-    # Integration: Refactored push_user with correct indentation
     def push_user(text: str):
         st.session_state.messages.append({"role": "user", "content": text})
-        
-        # Agentic extraction
-        st.session_state.prefs = st.session_state.extractor_agent.extract(
-            text, 
-            st.session_state.prefs
-        )
-        
-        st.session_state.messages.append(assistant_reply(text))
+        # Use the agent
+        st.session_state.prefs = st.session_state.extractor_agent.extract(text, st.session_state.prefs)
+        st.session_state.messages.append({"role": "assistant", "content": "Updated preferences."})
 
-    # Slot tracker UI
+    # Display Chips
     labels = {"budget": "Budget", "days": "Days", "month": "Month", "from": "From"}
-    chips = "".join(
-        f'<span class="hz-chip">{labels[k]}: <b>{"₹{:,}".format(v) if k == "budget" else v}</b></span>'
-        if v else f'<span class="hz-chip" style="opacity:.45">{labels[k]}: ?</span>'
-        for k, v in st.session_state.prefs.items())
-    st.markdown(f'<div class="hz-meta" style="margin-bottom:1rem">{chips}</div>', unsafe_allow_html=True)
+    chips = "".join(f'<span class="hz-chip">{labels[k]}: <b>{v}</b></span>' if v else f'<span class="hz-chip" style="opacity:.45">{labels[k]}: ?</span>' for k, v in st.session_state.prefs.items())
+    st.markdown(f'<div class="hz-meta">{chips}</div>', unsafe_allow_html=True)
 
-    # Chat render loop
-    for i, msg in enumerate(st.session_state.messages):
-        with st.chat_message(msg["role"], avatar="🧭" if msg["role"] == "assistant" else None):
-            st.markdown(msg["content"])
-            if msg.get("conf"):
-                evidence_block(*msg["conf"], key=f"chat-{i}")
-            if msg.get("options") and i == len(st.session_state.messages) - 1:
-                cols = st.columns(len(msg["options"]))
-                for j, (col, opt) in enumerate(zip(cols, msg["options"])):
-                    with col:
-                        if st.button(opt, key=f"opt-{i}-{j}", width="stretch"):
-                            push_user(opt)
-                            st.rerun()
-
-    if prompt := st.chat_input("e.g. “Kyoto in November — we love food and temples”"):
+    if prompt := st.chat_input("e.g. Kyoto in November, 5 days, 100k budget"):
         push_user(prompt)
         st.rerun()
-
 # ============================================================================
 # ITINERARY — destination-aware, rich cards, one-click PDF
 # ============================================================================
