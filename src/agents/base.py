@@ -7,13 +7,14 @@ class BaseAgent(ABC):
     def __init__(self, name: str, system_prompt: str):
         self.name = name
         self.system_prompt = system_prompt
-        # Using a cheaper model if available, or just keeping the token limit
         self.llm = ChatOpenAI(
-            model="openai/gpt-4o-mini", # Switch to -mini to save significantly on credits
-            temperature=0,             # Keep temp 0 for extraction
+            model="openai/gpt-4o-mini",
+            temperature=0,
             openai_api_key=os.environ.get("OPENROUTER_API_KEY"),
-            openai_api_base="[https://openrouter.ai/api/v1](https://openrouter.ai/api/v1)",
-            max_tokens=1000            # Explicit limit
+            # Use base_url instead of openai_api_base
+            # Ensure it ends with /v1/chat/completions or just points to the API root
+            base_url="https://openrouter.ai/api/v1", 
+            max_tokens=1000
         )
 
     @abstractmethod
