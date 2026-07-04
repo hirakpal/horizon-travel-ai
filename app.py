@@ -18,7 +18,7 @@ from datetime import datetime
 import plotly.graph_objects as go
 import streamlit as st
 from fpdf import FPDF
-
+from openai import OpenAI
 # ============================================================================
 # Design tokens — slate night + sunset (coral → amber)
 # ============================================================================
@@ -691,22 +691,21 @@ if page == "Home":
 # CHAT — proactive clarification flow (PRD §2.1)
 # ============================================================================
 elif page == "Chat":
-    # 1. Imports and Initialization (Ensure these are at the top of your file)
-    from agents.extractor import PreferenceExtractorAgent
-    from openai import OpenAI
-    
+    # Initialize Client and Agent
     if "openai_client" not in st.session_state:
-    st.session_state.openai_client = OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=os.getenv("OPENROUTER_API_KEY") # Explicitly load the key
-    )
+        # Load key from secrets or environment
+        api_key = st.secrets.get("OPENROUTER_API_KEY") or os.getenv("OPENROUTER_API_KEY")
+        st.session_state.openai_client = OpenAI(
+            base_url="https://openrouter.ai/api/v1",
+            api_key=api_key
+        )
+    
     if "extractor_agent" not in st.session_state:
         st.session_state.extractor_agent = PreferenceExtractorAgent(st.session_state.openai_client)
 
     st.markdown("## 💬 Chat with Horizon")
     st.markdown('<p style="color:#94A3B8;margin-top:-.4rem">Describe the trip in your own '
-                "words. Horizon asks targeted questions when critical details are missing — "
-                "it never guesses your budget.</p>", unsafe_allow_html=True)
+                "words. Horizon asks targeted questions when critical details are missing.</p>", unsafe_allow_html=True)
     rule()
 
     if "messages" not in st.session_state:
@@ -718,11 +717,11 @@ elif page == "Chat":
     if "prefs" not in st.session_state:
         st.session_state.prefs = {"budget": None, "days": None, "month": None, "from": None}
 
-    # 2. Integration: Updated push_user function
+    # Integration: Refactored push_user with correct indentation
     def push_user(text: str):
         st.session_state.messages.append({"role": "user", "content": text})
         
-        # New agentic call replaces brittle string matching logic
+        # Agentic extraction
         st.session_state.prefs = st.session_state.extractor_agent.extract(
             text, 
             st.session_state.prefs
@@ -730,16 +729,15 @@ elif page == "Chat":
         
         st.session_state.messages.append(assistant_reply(text))
 
-    # Keep your existing slot tracker UI
+    # Slot tracker UI
     labels = {"budget": "Budget", "days": "Days", "month": "Month", "from": "From"}
     chips = "".join(
         f'<span class="hz-chip">{labels[k]}: <b>{"₹{:,}".format(v) if k == "budget" else v}</b></span>'
         if v else f'<span class="hz-chip" style="opacity:.45">{labels[k]}: ?</span>'
         for k, v in st.session_state.prefs.items())
-    st.markdown(f'<div class="hz-meta" style="margin-bottom:1rem">{chips}</div>',
-                unsafe_allow_html=True)
+    st.markdown(f'<div class="hz-meta" style="margin-bottom:1rem">{chips}</div>', unsafe_allow_html=True)
 
-    # Rendering chat messages
+    # Chat render loop
     for i, msg in enumerate(st.session_state.messages):
         with st.chat_message(msg["role"], avatar="🧭" if msg["role"] == "assistant" else None):
             st.markdown(msg["content"])
@@ -750,7 +748,7 @@ elif page == "Chat":
                 for j, (col, opt) in enumerate(zip(cols, msg["options"])):
                     with col:
                         if st.button(opt, key=f"opt-{i}-{j}", width="stretch"):
-                            push_user(opt) # Refactored to use the new agentic flow
+                            push_user(opt)
                             st.rerun()
 
     if prompt := st.chat_input("e.g. “Kyoto in November — we love food and temples”"):
