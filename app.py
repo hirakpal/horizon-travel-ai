@@ -5,7 +5,6 @@ Enhanced version:
   • Chat with proactive clarification (PRD §2.1) + persisted replies
   • Destination-aware itineraries with confidence + evidence cards (PRD §2.3/§2.5)
   • Travel DNA radar + learned preferences + DNALearner change feed (PRD §2.2)
-  • Explore Top-10 with offline SVG art, wired to the itinerary page
   • One-click, in-memory, styled PDF export
 
 Run: streamlit run app.py
@@ -685,7 +684,7 @@ with st.sidebar:
            </div>""", unsafe_allow_html=True)
 
     PAGES = [("Home", "🏠"), ("Chat", "💬"), ("Itinerary", "🗺️"),
-             ("Travel DNA", "🧬"), ("Explore", "✨")]
+             ("Travel DNA", "🧬")]
     auth_user = st.session_state.auth_user
     PAGES.append(("Profile", "👤") if auth_user else ("Login", "🔑"))
     if not auth_user:
@@ -707,13 +706,6 @@ with st.sidebar:
                     font-size:.72rem;color:#64748B">
              Horizon Travel AI · Capstone demo<br>UI shell · mock data mode</div>""",
         unsafe_allow_html=True)
-
-    rule()
-    st.markdown("### 🛠️ Backend Debug")
-    if "travel_state" in st.session_state:
-        state = st.session_state.travel_state
-        st.json(state.preferences.model_dump(), expanded=False)
-        st.write(f"**Agent**: {state.active_agent}")
 
 page = st.session_state.current_page
 
@@ -1153,40 +1145,6 @@ elif page == "Travel DNA":
                     f'<div class="hz-body">{html.escape(note)}</div></div>',
                     unsafe_allow_html=True)
 
-
-# ============================================================================
-# EXPLORE — Top 10, offline art, wired to itinerary
-# ============================================================================
-elif page == "Explore":
-    st.markdown("## ✨ Top 10 Destinations")
-    st.markdown('<p style="color:#94A3B8;margin-top:-.4rem">Ranked against your Travel DNA — '
-                "with the reason for every score, not just the number.</p>",
-                unsafe_allow_html=True)
-    rule()
-
-    cols = st.columns(2, gap="medium")
-    for i, d in enumerate(DESTINATIONS):
-        with cols[i % 2]:
-            st.markdown(
-                f"""<div class="hz-card hz-dest">
-                      <img src="{scene_svg(d['c'][0], d['c'][1], d['emoji'])}" alt="">
-                      <div class="inner">
-                        <div style="display:flex;justify-content:space-between;align-items:baseline">
-                          <div class="hz-title">{html.escape(d['name'])}</div>
-                          <span class="match">{d['match']}% match</span>
-                        </div>
-                        <div class="hz-body">{html.escape(d['desc'])}</div>
-                        <div class="hz-meta">
-                          <span class="hz-chip">📅 <b>{d['months']}</b></span>
-                          <span class="hz-chip">💰 <b>{d['budget']}</b></span>
-                        </div>
-                        <div class="why">{html.escape(d['why'])}</div>
-                      </div>
-                    </div>""", unsafe_allow_html=True)
-            if st.button(f"🌟 Plan {d['name'].split(',')[0]}", key=f"plan_{i}",
-                         width="stretch"):
-                st.session_state.current_destination = d["name"]
-                set_page("Itinerary")
 
 # ============================================================================
 # LOGIN — holiday-vibe entry point
