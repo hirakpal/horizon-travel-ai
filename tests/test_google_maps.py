@@ -101,6 +101,26 @@ def test_text_search_places_omits_location_bias_when_not_given():
     assert "locationBias" not in mock_post.call_args.kwargs["json"]
 
 
+def test_compute_transit_eta_returns_live_and_typical_duration():
+    fake_api_response = {"routes": [
+        {"distanceMeters": 5000, "duration": "900s", "staticDuration": "600s"}
+    ]}
+    with patch.object(google_maps.requests, "post", return_value=_mock_response(fake_api_response)) as mock_post:
+        eta = google_maps.compute_transit_eta(22.5448, 88.3426, 22.5626, 88.3529, api_key="test-key")
+
+    assert eta["distance_km"] == 5.0
+    assert eta["live_duration_min"] == 15
+    assert eta["typical_duration_min"] == 10
+    assert eta["delay_min"] == 5
+    assert mock_post.call_args.kwargs["json"]["travelMode"] == "DRIVE"
+    assert mock_post.call_args.kwargs["json"]["routingPreference"] == "TRAFFIC_AWARE"
+
+
+def test_compute_transit_eta_returns_none_when_no_routes_found():
+    with patch.object(google_maps.requests, "post", return_value=_mock_response({"routes": []})):
+        assert google_maps.compute_transit_eta(0, 0, 1, 1, api_key="test-key") is None
+
+
 def test_autocomplete_place_id_returns_top_suggestion():
     fake_api_response = {"suggestions": [
         {"placePrediction": {"placeId": "ChIJ_patna123", "text": {"text": "Patna, Bihar, India"}}},

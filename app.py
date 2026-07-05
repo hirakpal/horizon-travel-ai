@@ -233,247 +233,6 @@ def scene_svg(c1: str, c2: str, emoji: str) -> str:
 
 
 # ============================================================================
-# Data — destinations + destination-aware itineraries
-# ============================================================================
-DESTINATIONS = [
-    {"name": "Kyoto, Japan", "emoji": "⛩️", "match": 97, "c": ("#B44069", "#2A2150"),
-     "desc": "Timeless temples, serene gardens, and the best food city you can cross on foot.",
-     "months": "Nov · Apr", "budget": "¥12–18k/day",
-     "why": "Culture 94 + food 88 + photography 95 all peak here"},
-    {"name": "Bali, Indonesia", "emoji": "🌴", "match": 92, "c": ("#F2994A", "#14532D"),
-     "desc": "Golden beaches, lush rice terraces, spiritual retreats and vivid Hindu culture.",
-     "months": "May–Sep", "budget": "$40–70/day",
-     "why": "Relax + photography blend; you loved it in 2023 — new regions to cover"},
-    {"name": "Santorini, Greece", "emoji": "🏛️", "match": 91, "c": ("#3B82F6", "#0C4A6E"),
-     "desc": "Cliffside villages, dramatic sunsets, and white-washed lanes built for a camera.",
-     "months": "May · Sep–Oct", "budget": "€90–140/day",
-     "why": "Photography 95 match — golden-hour capital of the Aegean"},
-    {"name": "Paris, France", "emoji": "🗼", "match": 88, "c": ("#8B5CF6", "#312E81"),
-     "desc": "Seine walks, world-class museums, and café culture as a daily rhythm.",
-     "months": "Apr–Jun · Sep", "budget": "€100–160/day",
-     "why": "Culture 94 anchor; food adventure covered by market streets"},
-    {"name": "Barcelona, Spain", "emoji": "🦎", "match": 87, "c": ("#F59E0B", "#7C2D12"),
-     "desc": "Gaudí's fever-dream architecture, Mediterranean beaches, and tapas grazing.",
-     "months": "May–Jun · Sep", "budget": "€85–130/day",
-     "why": "You rated Sagrada Família 5★ — unfinished business in the Gothic quarter"},
-    {"name": "Swiss Alps, Switzerland", "emoji": "🏔️", "match": 85, "c": ("#60A5FA", "#1E3A5F"),
-     "desc": "Majestic peaks and scenic trains through an alpine postcard.",
-     "months": "Jun–Sep · Dec", "budget": "CHF 150–220/day",
-     "why": "Scenic-transit match; walking 81 handles the valley trails"},
-    {"name": "Banff, Canada", "emoji": "🐻", "match": 82, "c": ("#34D399", "#064E3B"),
-     "desc": "Turquoise glacial lakes, towering peaks, and wildlife on the trail.",
-     "months": "Jun–Sep", "budget": "C$130–190/day",
-     "why": "Adventure 72 + photography — lake-light at dawn suits your pattern"},
-    {"name": "Dubai, UAE", "emoji": "🏙️", "match": 81, "c": ("#F472B6", "#4C1D95"),
-     "desc": "Futuristic skyline, desert safaris, and maximal everything.",
-     "months": "Nov–Mar", "budget": "AED 500–900/day",
-     "why": "Short-haul stopover fit; low walking days available"},
-    {"name": "Marrakech, Morocco", "emoji": "🕌", "match": 79, "c": ("#FB7185", "#7F1D1D"),
-     "desc": "Bustling souks, riad courtyards, and mint tea diplomacy.",
-     "months": "Oct–Apr", "budget": "$60–100/day",
-     "why": "Market-grazing food style matches; strong photo texture"},
-    {"name": "Queenstown, New Zealand", "emoji": "🪂", "match": 76, "c": ("#38BDF8", "#134E4A"),
-     "desc": "Bungee capital with fjord landscapes an hour away.",
-     "months": "Dec–Feb", "budget": "NZ$140–200/day",
-     "why": "Adventure 72 says yes; long-haul cost holds the score down"},
-]
-
-EV = {
-    "dna": "Travel DNA history", "live": "Live data", "local": "Local insights",
-    "web": "Internet reviews", "comm": "Community experiences", "pref": "Your stated preferences",
-}
-
-
-def seg(time, dur, icon, title, desc, conf, evidence, *, transport=None, walk=0.0,
-        cost=None, crowd=None, note=None, alt=None):
-    return {"time": time, "dur": dur, "icon": icon, "title": title, "desc": desc,
-            "conf": conf, "evidence": evidence, "transport": transport, "walk": walk,
-            "cost": cost, "crowd": crowd, "note": note, "alt": alt}
-
-
-ITINERARIES = {
-    "Kyoto, Japan": {
-        "summary": "Three days built around light: dawn shrines before the crowds, foliage at "
-                   "eye level, deliberate rest so the last day lands well. ~6–8 km on foot per day.",
-        "month": "November", "group": 2, "budget_label": "₹95,000", "currency": "¥",
-        "overall": (94, [("dna", "Built on 17 learned preferences from 4 completed trips"),
-                         ("live", "Weather, crowd and transit feeds checked 2h ago"),
-                         ("local", "Timings validated against local photographer guides")],
-                    "Sunday's river boat is the one weather-sensitive block — fallback pre-planned."),
-        "days": [
-            {"n": 1, "date": "Sat, 14 Nov", "theme": "Southern Higashiyama on foot",
-             "weather": "14°C · clear", "walk": 7.8, "segments": [
-                seg("06:45", 150, "⛩️", "Fushimi Inari at dawn",
-                    "Climb the first 2,000 torii before the crowds; turn at the Yotsutsuji viewpoint.",
-                    95, [("dna", "You rated Fushimi Inari 5★ on the 2024 side-visit"),
-                         ("live", "Crowd feed <15% capacity before 08:00 in November")],
-                    transport="JR Nara line → Tofukuji (5 min)", walk=4.2, cost=0, crowd="low",
-                    alt=("Tofukuji gardens first", "Peak maples, but 09:00 gates lose the crowd-free window.")),
-                seg("09:30", 45, "☕", "Vermillion espresso bar",
-                    "Third-wave coffee at the trail foot. Yuzu toast is the move.",
-                    84, [("web", "4.6★ across 900+ reviews"),
-                         ("dna", "You pick specialty coffee over hotel breakfast 7 of 8 times")],
-                    walk=0.4, cost=1400, crowd="moderate"),
-                seg("10:45", 180, "🏯", "Kiyomizu-dera + Sannenzaka lanes",
-                    "The wooden stage over the maple valley, then the preserved Edo lanes. "
-                    "Best light before 13:00.",
-                    74, [("comm", "Foliage week draws heavy foot traffic after 11:00"),
-                         ("pref", "Matches your temples + photography interests")],
-                    walk=2.6, cost=400, crowd="busy",
-                    note="Crowds in peak foliage week are volatile — I re-check live data the night before.",
-                    alt=("Eikan-dō evening illumination", "Equal foliage, thinner crowds, +¥1,000 ticket.")),
-                seg("14:00", 60, "🍜", "Omen Kodai-ji — udon lunch",
-                    "Hand-cut udon with seasonal vegetables, exactly on your walking route.",
-                    88, [("dna", "Japanese is your top-rated cuisine"),
-                         ("web", "Consistently rated best udon in Higashiyama")],
-                    walk=0.6, cost=2600, crowd="moderate"),
-            ]},
-            {"n": 2, "date": "Sun, 15 Nov", "theme": "Arashiyama — bamboo & river light",
-             "weather": "13°C · partly cloudy", "walk": 6.1, "segments": [
-                seg("07:30", 90, "🎋", "Bamboo grove before the buses",
-                    "Enter from the Nonomiya side; low sun through the culms is the shot.",
-                    92, [("local", "Grove near-empty before 08:30 even in peak season"),
-                         ("dna", "Photography 95 — dawn slots consistently accepted")],
-                    walk=1.8, cost=0, crowd="low"),
-                seg("10:00", 120, "🛶", "Hozugawa river boat descent",
-                    "Two hours through the gorge, maples at eye level. Book the 10:00 run.",
-                    68, [("comm", "Highly rated but cancelled on rain days"),
-                         ("live", "40% rain probability Sunday afternoon")],
-                    transport="JR Sagano line back (8 min)", walk=0.9, cost=4500, crowd="moderate",
-                    note="If rain hits I swap to the Sagano scenic railway automatically and re-time lunch.",
-                    alt=("Sagano scenic railway", "Covered carriages, same gorge, runs in light rain.")),
-                seg("12:45", 75, "🍱", "Shigetsu — shojin ryori",
-                    "Zen temple vegetarian kaiseki inside Tenryu-ji. A different register from street food.",
-                    80, [("pref", "You asked for one proper sit-down meal per day"),
-                         ("web", "Michelin-listed; reservation availability confirmed")],
-                    walk=0.5, cost=3800, crowd="low"),
-                seg("15:30", 120, "🌙", "Ryokan onsen + rest block",
-                    "Deliberate empty space — day 3 starts early. Bath, tea, feet up.",
-                    89, [("dna", "Your past trips show energy dips on day-2 afternoons")],
-                    walk=0.0, cost=0, crowd="low"),
-            ]},
-            {"n": 3, "date": "Mon, 16 Nov", "theme": "Golden pavilion, market grazing, dusk departure",
-             "weather": "15°C · sunny", "walk": 5.4, "segments": [
-                seg("08:50", 75, "🏆", "Kinkaku-ji at opening",
-                    "The gold pavilion over the mirror pond — Monday opening is the week's thinnest crowd.",
-                    87, [("live", "Monday-morning footfall runs 35% below weekend"),
-                         ("pref", "On your must-see list")],
-                    transport="Bus 205 → Nishiki (25 min)", walk=1.6, cost=500, crowd="moderate"),
-                seg("11:30", 90, "🍡", "Nishiki market grazing lunch",
-                    "Stall by stall: tamagoyaki, tako skewers, black-sesame soft serve. Stop when happy.",
-                    85, [("dna", "Market grazing beat sit-down lunches 3:1 in your history"),
-                         ("comm", "Top last-day pick among food-focused travellers")],
-                    walk=1.2, cost=2500, crowd="busy"),
-                seg("16:10", 80, "🚄", "Haruka express to Kansai Airport",
-                    "Reserved seats, luggage space confirmed. 2h40m buffer before the flight.",
-                    96, [("live", "On-time performance 98% this month")],
-                    walk=0.6, cost=3600, crowd="low"),
-            ]},
-        ],
-    },
-    "Bali, Indonesia": {
-        "summary": "Three days across two Balis: Ubud's ridgewalks and rice terraces, then the "
-                   "Bukit's cliff temples and surf-watching sunsets. Paced slow on purpose.",
-        "month": "June", "group": 2, "budget_label": "₹80,000", "currency": "Rp ",
-        "overall": (88, [("dna", "You completed Bali 2023 — this route covers what you missed"),
-                         ("live", "Dry-season forecasts stable for the window"),
-                         ("comm", "Route pattern validated by repeat-visitor reports")], None),
-        "days": [
-            {"n": 1, "date": "Day 1", "theme": "Ubud — ridge walk & terraces",
-             "weather": "29°C · sunny", "walk": 6.4, "segments": [
-                seg("07:00", 90, "🌾", "Campuhan ridge walk",
-                    "Grass-spine ridge above two river valleys — cool air and empty before 08:30.",
-                    91, [("local", "Locals walk it at dawn; midday heat makes it brutal"),
-                         ("dna", "Photography 95 — dawn slots consistently accepted")],
-                    walk=3.8, cost=0, crowd="low"),
-                seg("10:00", 120, "🛕", "Tirta Empul water temple",
-                    "Purification pools and spring-fed shrines. Sarongs provided at the gate.",
-                    82, [("web", "4.7★; strongest-rated temple experience near Ubud"),
-                         ("pref", "Matches your culture interest")],
-                    transport="Grab car (25 min)", walk=1.1, cost=50000, crowd="moderate",
-                    alt=("Gunung Kawi", "Fewer visitors, dramatic rock-cut shrines, +200 stairs.")),
-                seg("13:00", 75, "🥥", "Warung lunch over the paddies",
-                    "Nasi campur with a terrace view — order the sambal matah on the side.",
-                    86, [("dna", "You favour local warungs over hotel dining 5:1")],
-                    walk=0.5, cost=90000, crowd="low"),
-            ]},
-            {"n": 2, "date": "Day 2", "theme": "Bukit — cliffs & surf light",
-             "weather": "30°C · clear", "walk": 4.2, "segments": [
-                seg("09:00", 150, "🏖️", "Bingin & Padang Padang beaches",
-                    "Cliff-stair beaches on the Bukit's west face; watch the reef break from the warung.",
-                    84, [("comm", "Best swell-watching without surfing yourself"),
-                         ("live", "Mid-tide window 09:00–12:00 for beach width")],
-                    transport="Scooter or Grab (20 min hops)", walk=2.4, cost=15000, crowd="moderate"),
-                seg("17:30", 120, "🌅", "Uluwatu temple at sunset + kecak",
-                    "Cliff-edge temple, then the fire-chant kecak dance as the sun drops.",
-                    72, [("web", "Iconic but heavily attended; kecak sells out"),
-                         ("live", "Sunset 18:10; haze risk moderate this week")],
-                    walk=1.4, cost=150000, crowd="busy",
-                    note="If the kecak sells out I book the 19:30 second show and shift dinner.",
-                    alt=("Sunset at Karang Boma cliff", "Same light, no crowds, no dance — bring water.")),
-            ]},
-            {"n": 3, "date": "Day 3", "theme": "Slow morning, market, departure",
-             "weather": "29°C · sunny", "walk": 3.1, "segments": [
-                seg("08:00", 90, "🏊", "Pool + long breakfast",
-                    "Deliberate empty block — you land better after slow final mornings.",
-                    90, [("dna", "Trip-completion pattern: rushed last days rated 2★ lower")],
-                    walk=0.0, cost=0, crowd="low"),
-                seg("10:30", 90, "🧺", "Ubud art market sweep",
-                    "Rattan, textiles, coffee beans. Haggle from 40% of the opening price, kindly.",
-                    78, [("comm", "Morning stock is freshest; afternoon is tour-bus pricing")],
-                    walk=1.6, cost=200000, crowd="moderate"),
-                seg("13:30", 90, "🚗", "Transfer to DPS airport",
-                    "Pre-booked car; Friday traffic buffer included.",
-                    93, [("live", "Route running 12 min over baseline — buffer absorbs it")],
-                    walk=0.4, cost=350000, crowd="low"),
-            ]},
-        ],
-    },
-}
-
-
-def generic_itinerary(dest: str) -> dict:
-    """Fallback template for destinations without a hand-built plan."""
-    city = dest.split(",")[0]
-    d = next((x for x in DESTINATIONS if x["name"] == dest), None)
-    flavor = d["desc"] if d else "the city's signature sights"
-    return {
-        "summary": f"A balanced three-day first pass at {city} — anchor sights at low-crowd "
-                   f"hours, one standout meal a day, and slack built in for wandering.",
-        "month": "Flexible", "group": 2, "budget_label": "TBD", "currency": "",
-        "overall": (76, [("web", f"Route assembled from top-rated {city} traveller reports"),
-                         ("dna", "Paced to your walking tolerance (81/100)")],
-                    "First-pass plan — confidence rises once dates and budget are locked."),
-        "days": [
-            {"n": i, "date": f"Day {i}", "theme": t, "weather": "—", "walk": w, "segments": [
-                seg("09:00", 180, "📍", f"{city}: {t.lower()}",
-                    f"Morning block: {flavor}",
-                    76, [("web", "Aggregated from recent traveller reviews")],
-                    walk=w * 0.6, crowd="moderate"),
-                seg("13:00", 75, "🍽️", "Signature lunch spot",
-                    "Highest-rated local-cuisine pick within walking distance of the morning block.",
-                    74, [("web", "4.5★+ with consistent recent reviews"),
-                         ("dna", "Cuisine style matched to your food profile")],
-                    walk=0.5, crowd="moderate"),
-                seg("15:30", 150, "🌇", "Golden-hour viewpoint",
-                    "The classic photo vantage, timed for late light.",
-                    78, [("comm", "Community-tagged best-light location"),
-                         ("dna", "Photography 95 — always your highest-rated block")],
-                    walk=w * 0.3, crowd="busy"),
-            ]}
-            for i, (t, w) in enumerate(
-                [("Arrival & old town", 4.5), ("Anchor sights", 6.5), ("Nature & departure", 5.0)], 1)
-        ],
-    }
-
-
-def get_itinerary(dest: str) -> dict:
-    return ITINERARIES.get(dest) or generic_itinerary(dest)
-
-
-
-
-# ============================================================================
 # Render helpers
 # ============================================================================
 def rule():
@@ -485,6 +244,12 @@ def conf_badge_html(score: int) -> str:
     return (f'<span class="hz-conf" style="color:{color};border-color:{color}55;'
             f'background:{color}14"><span class="dot" style="background:{color}">'
             f'</span>{score}% · {label}</span>')
+
+
+EV = {
+    "dna": "Travel DNA history", "live": "Live data", "local": "Local insights",
+    "web": "Internet reviews", "comm": "Community experiences", "pref": "Your stated preferences",
+}
 
 
 def evidence_block(score: int, evidence: list, note: str | None, key: str):
@@ -528,6 +293,123 @@ def cached_trip_map(points: tuple, api_key: str):
             [{"lat": lat, "lng": lng} for lat, lng in points], api_key)
     except Exception:
         return None
+
+
+@st.cache_data(show_spinner=False, ttl=1800)
+def cached_geocode(destination: str):
+    """Open-Meteo's geocoder needs no API key, so this works even without
+    GOOGLE_MAPS_API_KEY configured. Cached longer than the weather itself
+    since a destination's coordinates never change."""
+    from src.tools import weather
+    try:
+        return weather.geocode_destination(destination)
+    except Exception:
+        return None
+
+
+@st.cache_data(show_spinner=False, ttl=600)
+def cached_weather(lat: float, lng: float):
+    from src.tools import weather
+    try:
+        return weather.fetch_current_conditions(lat, lng)
+    except Exception:
+        return None
+
+
+@st.cache_data(show_spinner=False, ttl=300)
+def cached_transit_eta(origin_lat: float, origin_lng: float,
+                        dest_lat: float, dest_lng: float, api_key: str):
+    """Short TTL — this is the one signal here that's genuinely live
+    (traffic-aware), so it shouldn't go stale for long."""
+    from src.tools import google_maps
+    try:
+        return google_maps.compute_transit_eta(origin_lat, origin_lng, dest_lat, dest_lng, api_key)
+    except Exception:
+        return None
+
+
+def render_system_status(active_itinerary: dict, active_prefs: dict):
+    """Home page's 'System status' panel: real weather + crowd estimate for
+    the active plan's destination, plus a real live-vs-typical transit delay
+    when Google Maps is configured and the itinerary has grounded
+    coordinates to check. Shows an honest empty state when there's no active
+    plan to monitor, rather than always claiming monitoring is active."""
+    if not active_itinerary or not active_prefs or not active_prefs.get("destination"):
+        st.markdown(
+            """<div class="hz-card">
+                 <div class="hz-kicker">monitoring</div>
+                 <div class="hz-title">💤 Nothing to monitor yet</div>
+                 <div class="hz-body">Live weather, transit and crowd checks activate once you
+                 have an active plan.</div>
+               </div>""", unsafe_allow_html=True)
+        return
+
+    from src.tools.crowd import estimate_crowd_level
+
+    geocoded = cached_geocode(active_prefs["destination"])
+    weather_now = cached_weather(geocoded["lat"], geocoded["lng"]) if geocoded else None
+
+    if weather_now and weather_now.get("local_time"):
+        local_dt = datetime.fromisoformat(weather_now["local_time"])
+        crowd_now = estimate_crowd_level(local_dt)
+        crowd_label = {"low": "Quiet", "moderate": "Moderate", "busy": "Busy"}[crowd_now["level"]]
+        rain_note = " · rain now" if (weather_now.get("precipitation_mm") or 0) > 0 else ""
+        st.markdown(
+            f"""<div class="hz-card">
+                 <div class="hz-kicker">live weather · {html.escape(geocoded.get('name') or '')}</div>
+                 <div class="hz-title">{weather_now['weather_emoji']} {weather_now['temp_c']:.0f}°C · """
+            f"""{html.escape(weather_now['weather_label'])}</div>
+                 <div class="hz-body">Wind {weather_now['wind_kph']:.0f} km/h{rain_note}. """
+            f"""Local time {local_dt.strftime('%a %I:%M %p')}.</div>
+               </div>
+               <div class="hz-card">
+                 <div class="hz-kicker">crowd estimate</div>
+                 <div class="hz-title">👥 {crowd_label} right now</div>
+                 <div class="hz-body">{html.escape(crowd_now['reason'])} Estimated from """
+            f"""time-of-day patterns, not a live sensor feed.</div>
+               </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown(
+            """<div class="hz-card">
+                 <div class="hz-kicker">monitoring</div>
+                 <div class="hz-body">Weather checks are temporarily unavailable for this
+                 destination.</div>
+               </div>""", unsafe_allow_html=True)
+
+    google_api_key = os.environ.get("GOOGLE_MAPS_API_KEY")
+    transit = None
+    if google_api_key:
+        grounded_points = [
+            (seg["lat"], seg["lng"])
+            for day in active_itinerary.get("itinerary", [])
+            for seg in day.get("segments", [])
+            if seg.get("lat") is not None and seg.get("lng") is not None
+        ]
+        if len(grounded_points) >= 2:
+            (o_lat, o_lng), (d_lat, d_lng) = grounded_points[0], grounded_points[1]
+            transit = cached_transit_eta(o_lat, o_lng, d_lat, d_lng, google_api_key)
+
+    if transit:
+        delay = transit["delay_min"]
+        delay_note = (f"Running {delay} min over typical." if delay > 2
+                       else f"Running {-delay} min ahead of typical." if delay < -2
+                       else "Right on typical time.")
+        st.markdown(
+            f"""<div class="hz-card">
+                 <div class="hz-kicker">live transit · next hop</div>
+                 <div class="hz-title">🚗 {transit['live_duration_min']} min """
+            f"""({transit['distance_km']:.1f} km)</div>
+                 <div class="hz-body">{delay_note}</div>
+               </div>""", unsafe_allow_html=True)
+
+    st.markdown(
+        """<div class="hz-card">
+             <div class="hz-kicker">how horizon decides</div>
+             <div class="hz-body"><b style="color:#F1F5F9">Transparency over convenience.</b>
+             Confidence under 70% always ships with an uncertainty note and a pre-planned
+             fallback. You approve every booking-grade action — autonomy stops at your
+             wallet.</div>
+           </div>""", unsafe_allow_html=True)
 
 
 def segment_card(s: dict, currency: str, key: str):
@@ -656,8 +538,6 @@ def itinerary_pdf(dest: str, it: dict) -> bytes:
 # ============================================================================
 if "current_page" not in st.session_state:
     st.session_state.current_page = "Home"
-if "current_destination" not in st.session_state:
-    st.session_state.current_destination = "Kyoto, Japan"
 if "reset_stage" not in st.session_state:
     st.session_state.reset_stage = "request"  # "request" -> "confirm", for Forgot Password
 if "reset_identifier" not in st.session_state:
@@ -704,7 +584,7 @@ with st.sidebar:
     st.markdown(
         """<div style="margin-top:1.6rem;padding-top:1rem;border-top:1px solid #334155;
                     font-size:.72rem;color:#64748B">
-             Horizon Travel AI · Capstone demo<br>UI shell · mock data mode</div>""",
+             Horizon Travel AI · Capstone demo</div>""",
         unsafe_allow_html=True)
 
 page = st.session_state.current_page
@@ -714,62 +594,113 @@ page = st.session_state.current_page
 # HOME
 # ============================================================================
 if page == "Home":
+    home_user = st.session_state.auth_user
+    home_name = None
+    if home_user:
+        home_name = home_user.profile.name or (home_user.email or home_user.phone or "").split("@")[0]
+    greeting = f"Welcome back, {html.escape(home_name)}." if home_name else "Plan your next trip."
+
     st.markdown(
-        """<div class="hz-hero">
+        f"""<div class="hz-hero">
              <div class="hz-eyebrow">Horizon · autonomous travel intelligence</div>
-             <h1>Welcome back, Hirak.<br>Plans that show <em>their work</em>.</h1>
+             <h1>{greeting}<br>Plans that show <em>their work</em>.</h1>
              <p>Every recommendation carries a confidence score and the evidence behind it.
                 Horizon learns your Travel DNA trip after trip — and asks before it guesses.</p>
            </div>""", unsafe_allow_html=True)
     st.write("")
 
-    it = get_itinerary(st.session_state.current_destination)
+    # The freshest source of truth is whatever's live in this browser session
+    # (mid-planning or just built); a logged-in user with no live session yet
+    # falls back to their most recently saved trip, so returning to Home after
+    # closing the tab still shows something real rather than nothing.
+    ts = st.session_state.get("travel_state")
+    active_itinerary, active_prefs = None, None
+    if ts and ts.itinerary_data:
+        active_itinerary, active_prefs = ts.itinerary_data, ts.preferences.model_dump()
+
+    trips = []
+    if home_user:
+        trips = auth_repository.list_trips_for_user(st.session_state.auth_conn, home_user.id)
+    if active_itinerary is None and trips:
+        latest_built = next((t for t in trips if t["itinerary_data"]), None)
+        if latest_built:
+            active_itinerary, active_prefs = latest_built["itinerary_data"], latest_built["preferences"]
+
+    validation = (active_itinerary or {}).get("validation")
+
+    # Stat tiles are real counts for a logged-in user — there's nothing to
+    # count for a guest browsing without an account, so those tiles show a
+    # dash rather than a fabricated number.
+    if home_user:
+        profile = home_user.profile
+        trips_completed_s = str(len(trips))
+        cities_visited_s = str(len({t["destination"] for t in trips if t.get("destination")}))
+        dna_signals_s = str(len(profile.food_preferences) + len(profile.travel_preferences)
+                             + len(profile.inflight_preferences) + len(profile.travel_dna_notes))
+    else:
+        trips_completed_s = cities_visited_s = dna_signals_s = "–"
+    confidence_s = f"{validation['confidence_score']}%" if validation else "–"
+
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        stat(f"{it['overall'][0]}%", "plan confidence")
+        stat(confidence_s, "plan confidence")
     with c2:
-        stat("4", "trips completed")
+        stat(trips_completed_s, "trips completed")
     with c3:
-        stat("78", "dna signals learned")
+        stat(dna_signals_s, "dna signals learned")
     with c4:
-        stat("4", "cities visited")
+        stat(cities_visited_s, "cities visited")
 
     rule()
     left, right = st.columns([3, 2], gap="large")
     with left:
         st.markdown("### Your active plan")
-        st.markdown(
-            f"""<div class="hz-card">
-                  <div class="hz-kicker">{it['month']} · {len(it['days'])} days · group of {it['group']}</div>
-                  <div class="hz-title">📍 {html.escape(st.session_state.current_destination)}</div>
-                  <div class="hz-body">{html.escape(it['summary'])}</div>
-                </div>""", unsafe_allow_html=True)
-        evidence_block(*it["overall"], key="home-conf")
-        st.write("")
-        b1, b2 = st.columns(2)
-        with b1:
-            if st.button("🗺️ Open the full itinerary", width="stretch"):
-                set_page("Itinerary")
-        with b2:
-            if st.button("💬 Change something in chat", width="stretch"):
+        if active_itinerary and active_prefs:
+            destination = active_prefs.get("destination") or "Your trip"
+            days_list = active_itinerary.get("itinerary", [])
+            kicker = " · ".join(b for b in (
+                active_prefs.get("month"),
+                f"{active_prefs['days']} days" if active_prefs.get("days") else None,
+            ) if b)
+            hotel_label = (active_prefs.get("hotel_type") or "").replace("_", " ").title()
+            summary = " · ".join(b for b in (
+                f"{len(days_list)}-day itinerary" if days_list else None,
+                f"{hotel_label} hotel tier" if hotel_label else None,
+                f"₹{active_prefs['budget']:,} budget" if active_prefs.get("budget") else None,
+            ) if b) or "Itinerary in progress."
+            st.markdown(
+                f"""<div class="hz-card">
+                      <div class="hz-kicker">{html.escape(kicker)}</div>
+                      <div class="hz-title">📍 {html.escape(destination)}</div>
+                      <div class="hz-body">{html.escape(summary)}</div>
+                    </div>""", unsafe_allow_html=True)
+            if validation:
+                st.markdown(f"**Itinerary review:** {conf_badge_html(validation['confidence_score'])}",
+                            unsafe_allow_html=True)
+                if validation.get("issues"):
+                    with st.expander("What our reviewer flagged"):
+                        for issue in validation["issues"]:
+                            st.markdown(f"- {issue}")
+            st.write("")
+            b1, b2 = st.columns(2)
+            with b1:
+                if st.button("🗺️ Open the full itinerary", width="stretch"):
+                    set_page("Itinerary")
+            with b2:
+                if st.button("💬 Change something in chat", width="stretch"):
+                    set_page("Chat")
+        else:
+            st.markdown(
+                """<div class="hz-card">
+                      <div class="hz-title">✨ No active plan yet</div>
+                      <div class="hz-body">Tell Horizon where you want to go and it'll build a
+                      day-by-day plan with a confidence score for every recommendation.</div>
+                    </div>""", unsafe_allow_html=True)
+            if st.button("💬 Start planning in Chat", type="primary", width="stretch"):
                 set_page("Chat")
     with right:
         st.markdown("### System status")
-        st.markdown(
-            """<div class="hz-card">
-                 <div class="hz-kicker">monitoring · circuit breaker</div>
-                 <div class="hz-title">🟢 Live monitoring active</div>
-                 <div class="hz-body">Weather, crowd and transit feeds refreshing. Monitoring
-                 pauses after 3 minutes of inactivity to avoid stale checks — and resumes
-                 the moment you're back.</div>
-               </div>
-               <div class="hz-card">
-                 <div class="hz-kicker">how horizon decides</div>
-                 <div class="hz-body"><b style="color:#F1F5F9">Transparency over convenience.</b>
-                 Confidence under 70% always ships with an uncertainty note and a pre-planned
-                 fallback. You approve every booking-grade action — autonomy stops at your
-                 wallet.</div>
-               </div>""", unsafe_allow_html=True)
+        render_system_status(active_itinerary, active_prefs)
 
 
 # ============================================================================
