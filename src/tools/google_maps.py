@@ -148,6 +148,44 @@ def compute_walking_route(origin_lat: float, origin_lng: float,
     return {"distance_km": distance_km, "duration_min": duration_min}
 
 
+def compute_transit_eta(origin_lat: float, origin_lng: float,
+                         dest_lat: float, dest_lng: float, api_key: str) -> dict:
+    """Routes API computeRoutes for driving mode, traffic-aware. Returns both
+    the live (current-traffic) duration and Google's typical/free-flow
+    duration for the same route, so callers can show a real live-vs-baseline
+    delay rather than a single static estimate. Returns None if no route is
+    found."""
+    response = requests.post(
+        ROUTES_URL,
+        headers={
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": api_key,
+            "X-Goog-FieldMask": "routes.duration,routes.staticDuration,routes.distanceMeters",
+        },
+        json={
+            "origin": {"location": {"latLng": {"latitude": origin_lat, "longitude": origin_lng}}},
+            "destination": {"location": {"latLng": {"latitude": dest_lat, "longitude": dest_lng}}},
+            "travelMode": "DRIVE",
+            "routingPreference": "TRAFFIC_AWARE",
+        },
+        timeout=REQUEST_TIMEOUT,
+    )
+    response.raise_for_status()
+    routes = response.json().get("routes", [])
+    if not routes:
+        return None
+
+    route = routes[0]
+    live_min = round(int(route.get("duration", "0s").rstrip("s")) / 60.0)
+    typical_min = round(int(route.get("staticDuration", "0s").rstrip("s")) / 60.0)
+    return {
+        "distance_km": route.get("distanceMeters", 0) / 1000.0,
+        "live_duration_min": live_min,
+        "typical_duration_min": typical_min,
+        "delay_min": live_min - typical_min,
+    }
+
+
 def autocomplete_place_id(query: str, api_key: str):
     """Places API (New) Autocomplete. Returns the top-matching place_id for a
     free-text query (city, landmark, address), or None if nothing matched."""
