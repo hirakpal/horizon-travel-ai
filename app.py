@@ -1247,42 +1247,49 @@ elif page == "Sign Up":
 
     _, col_mid, _ = st.columns([1, 1.4, 1])
     with col_mid:
-        name = st.text_input("Full name", key="signup_name")
-        email = st.text_input("Email address", key="signup_email")
-        phone = st.text_input("Phone number", key="signup_phone")
-        password = st.text_input("Password", type="password", key="signup_password",
-                                  help="At least 8 characters.")
-        confirm_password = st.text_input("Confirm password", type="password", key="signup_confirm")
+        # st.form batches every widget so nothing commits until submit — without
+        # it, expanding the profile section reruns the script and can silently
+        # revert a not-yet-blurred text field (e.g. email/phone typed but not
+        # committed), failing signup even though the fields look filled in.
+        with st.form("signup_form"):
+            name = st.text_input("Full name", key="signup_name")
+            email = st.text_input("Email address", key="signup_email")
+            phone = st.text_input("Phone number", key="signup_phone")
+            password = st.text_input("Password", type="password", key="signup_password",
+                                      help="At least 8 characters.")
+            confirm_password = st.text_input("Confirm password", type="password", key="signup_confirm")
 
-        with st.expander("✨ Fill in your travel profile now (optional)"):
-            dob = st.date_input("Date of birth", value=None, key="signup_dob",
-                                 min_value=datetime(1900, 1, 1), max_value=datetime.now())
-            sex = st.selectbox("Sex", SEX_OPTIONS, key="signup_sex")
-            address = st.text_area("Address", key="signup_address")
-            food_prefs = st.multiselect("Food preferences", options=list(PROFILE_FOOD_PREF_LABELS.keys()),
-                                         format_func=lambda k: PROFILE_FOOD_PREF_LABELS[k], key="signup_food")
-            travel_prefs = st.multiselect("Travel preferences", options=list(TRAVEL_PREF_LABELS.keys()),
-                                           format_func=lambda k: TRAVEL_PREF_LABELS[k], key="signup_travel")
-            inflight_prefs = st.multiselect("In-flight preferences", options=list(INFLIGHT_PREF_LABELS.keys()),
-                                             format_func=lambda k: INFLIGHT_PREF_LABELS[k], key="signup_inflight")
-            st.markdown("**Hotel preferences**")
-            hcol1, hcol2, hcol3 = st.columns(3)
-            with hcol1:
-                budget_tier = st.selectbox("Budget tier", options=list(HOTEL_BUDGET_TIER_LABELS.keys()),
-                                            format_func=lambda k: HOTEL_BUDGET_TIER_LABELS[k], key="signup_tier")
-            with hcol2:
-                bed_type = st.selectbox("Bed type", BED_TYPE_OPTIONS, key="signup_bed")
-            with hcol3:
-                view = st.selectbox("View", VIEW_TYPE_OPTIONS, key="signup_view")
-            acol1, acol2, acol3 = st.columns(3)
-            with acol1:
-                pool = st.checkbox("🏊 Pool", key="signup_pool")
-            with acol2:
-                gym = st.checkbox("🏋️ Gym", key="signup_gym")
-            with acol3:
-                spa = st.checkbox("💆 Spa", key="signup_spa")
+            with st.expander("✨ Fill in your travel profile now (optional)"):
+                dob = st.date_input("Date of birth", value=None, key="signup_dob",
+                                     min_value=datetime(1900, 1, 1), max_value=datetime.now())
+                sex = st.selectbox("Sex", SEX_OPTIONS, key="signup_sex")
+                address = st.text_area("Address", key="signup_address")
+                food_prefs = st.multiselect("Food preferences", options=list(PROFILE_FOOD_PREF_LABELS.keys()),
+                                             format_func=lambda k: PROFILE_FOOD_PREF_LABELS[k], key="signup_food")
+                travel_prefs = st.multiselect("Travel preferences", options=list(TRAVEL_PREF_LABELS.keys()),
+                                               format_func=lambda k: TRAVEL_PREF_LABELS[k], key="signup_travel")
+                inflight_prefs = st.multiselect("In-flight preferences", options=list(INFLIGHT_PREF_LABELS.keys()),
+                                                 format_func=lambda k: INFLIGHT_PREF_LABELS[k], key="signup_inflight")
+                st.markdown("**Hotel preferences**")
+                hcol1, hcol2, hcol3 = st.columns(3)
+                with hcol1:
+                    budget_tier = st.selectbox("Budget tier", options=list(HOTEL_BUDGET_TIER_LABELS.keys()),
+                                                format_func=lambda k: HOTEL_BUDGET_TIER_LABELS[k], key="signup_tier")
+                with hcol2:
+                    bed_type = st.selectbox("Bed type", BED_TYPE_OPTIONS, key="signup_bed")
+                with hcol3:
+                    view = st.selectbox("View", VIEW_TYPE_OPTIONS, key="signup_view")
+                acol1, acol2, acol3 = st.columns(3)
+                with acol1:
+                    pool = st.checkbox("🏊 Pool", key="signup_pool")
+                with acol2:
+                    gym = st.checkbox("🏋️ Gym", key="signup_gym")
+                with acol3:
+                    spa = st.checkbox("💆 Spa", key="signup_spa")
 
-        if st.button("Create Account", type="primary", width="stretch"):
+            submitted = st.form_submit_button("Create Account", type="primary", width="stretch")
+
+        if submitted:
             if password != confirm_password:
                 st.error("Passwords don't match.")
             else:
